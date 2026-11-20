@@ -168,7 +168,7 @@ const cam = { yaw: Math.PI, pitch: -0.08, pivot: new THREE.Vector3(), boom: 3, s
 const keys = {};
 const input = { fire: false, aim: false, jump: false, lookX: 0, lookY: 0, touchMove: new THREE.Vector2(), touchRun: false, touchAim: false };
 let state = 'menu';
-let pointerLocked = false, lastLockLoss = 0, mouseDownLook = false, pausedAt = 0;
+let pointerLocked = false, lastLockLoss = 0, mouseDownLook = false, pausedAt = 0, freeLook = false;
 
 addEventListener('keydown', (e) => {
   keys[e.code] = true;
@@ -192,12 +192,13 @@ addEventListener('mouseup', (e) => { if (e.button === 0) input.fire = false; if 
 addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('mousemove', (e) => {
   if (state !== 'playing' || isTouch) return;
-  if (document.pointerLockElement || mouseDownLook) { input.lookX += e.movementX * 0.0022; input.lookY += e.movementY * 0.0022; }
+  if (document.pointerLockElement || mouseDownLook || freeLook) { input.lookX += e.movementX * 0.0022; input.lookY += e.movementY * 0.0022; }
 });
 function lockPointer() {
   if (isTouch) return;
-  try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) { /* fallback: drag to look */ }
+  try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => { freeLook = true; }); } catch (_) { freeLook = true; /* fallback: mouse look without lock */ }
 }
+document.addEventListener('pointerlockerror', () => { freeLook = true; });
 document.addEventListener('pointerlockchange', () => {
   const was = pointerLocked; pointerLocked = !!document.pointerLockElement;
   if (was && !pointerLocked && state === 'playing') { lastLockLoss = performance.now(); setPaused(true); }
