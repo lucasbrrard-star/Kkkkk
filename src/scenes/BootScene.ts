@@ -9,16 +9,19 @@ export class BootScene extends Phaser.Scene {
     this.load.setPath('assets/');
     this.load.json('meta', 'meta.json');
     this.load.image('tiles', 'tiles.png');
-    this.load.atlas('objects', 'objects.png', 'objects.json');
+    this.load.multiatlas('objects', 'objects.json', 'assets/');
     this.load.image('player-img', 'player.png');
-    this.load.image('npc-img', 'npc.png');
+    // folhas dos NPCs: quantidade definida no meta.json
+    this.load.once('filecomplete-json-meta', (_k: string, _t: string, meta: { character: { npcCount: number } }) => {
+      for (let i = 0; i < meta.character.npcCount; i++) this.load.image(`npc${i}-img`, `npc${i}.png`);
+    });
   }
 
   create() {
     const meta = this.cache.json.get('meta');
-    const { frameW, frameH } = meta.character;
-    // spritesheets a partir das imagens (tamanho de quadro vindo do meta)
-    for (const k of ['player', 'npc']) {
+    const { frameW, frameH, npcCount } = meta.character;
+    const keys = ['player', ...Array.from({ length: npcCount }, (_, i) => `npc${i}`)];
+    for (const k of keys) {
       const src = this.textures.get(`${k}-img`).getSourceImage() as HTMLImageElement;
       this.textures.addSpriteSheet(k, src, { frameWidth: frameW, frameHeight: frameH });
     }

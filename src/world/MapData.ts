@@ -200,8 +200,8 @@ export function buildMap(): MapDef {
   obj({ frame: 'fountain_0', x: 30.5, y: 22, anim: { frames: 3, fps: 6 } }); circle(30.5, 22, 2.1, 1.4);
   const tree = (f: string, x: number, y: number) => { obj({ frame: f, x, y }); circle(x, y, 0.35, 7); };
   tree('ipe0', 25.4, 17.4); tree('ipe1', 36.0, 17.6); tree('jac0', 25.2, 27.0); tree('ipe0', 36.2, 27.2);
-  const benchX = (x: number, y: number) => { obj({ frame: 'bench_x', x, y }); rect(x - 0.95, y - 0.4, x + 0.95, y + 0.4, 0.7); };
-  const benchZ = (x: number, y: number) => { obj({ frame: 'bench_z', x, y }); rect(x - 0.4, y - 0.95, x + 0.4, y + 0.95, 0.7); };
+  const benchX = (x: number, y: number) => { obj({ frame: 'bench_x', x, y }); rect(x - 0.95, y - 0.3, x + 0.95, y + 0.3, 0.5); };
+  const benchZ = (x: number, y: number) => { obj({ frame: 'bench_z', x, y }); rect(x - 0.3, y - 0.95, x + 0.3, y + 0.95, 0.5); };
   benchX(30.5, 17.4); benchX(30.5, 26.8); benchZ(26.0, 22); benchZ(35.2, 22);
   obj({ frame: 'trash', x: 28.0, y: 17.3 }); circle(28.0, 17.3, 0.35, 1.2);
   obj({ frame: 'trash', x: 33.4, y: 26.8 }); circle(33.4, 26.8, 0.35, 1.2);
@@ -229,7 +229,7 @@ export function buildMap(): MapDef {
   obj({ frame: 'busstop', x: 42.7, y: 29.0, big: true, sortRect: { x0: 42.3, y0: 27.2, x1: 43.6, y1: 30.8 } });
   rect(43.2, 27.3, 43.6, 30.7, 4);
   const stop = { x: 40.5, y: 29.0, name: 'Parada Orla Central' };
-  interactables.push({ id: 'ponto', kind: 'busstop', x: 42.4, y: 29.0, radius: 1.9, markerZ: 3.6,
+  interactables.push({ id: 'ponto', kind: 'busstop', x: 42.4, y: 29.0, radius: 2.5, markerZ: 3.6,
     title: 'Parada Orla Central', subtitle: 'Av. Beira-Mar',
     info: { Linha: '01 · Circular Ilha', Sentido: 'Rua das Palmeiras → Rua Oeste → Rua do Sol', Tarifa: '₵ 5 (demonstração)' } });
   obj({ frame: 'trash', x: 44.3, y: 32.2 }); circle(44.3, 32.2, 0.35, 1.2);
@@ -243,27 +243,26 @@ export function buildMap(): MapDef {
   // ---------------- praia
   const umb = (x: number, y: number, v: number) => { obj({ frame: `umb${v}`, x, y }); circle(x, y, 0.12, 2.5); };
   const lounger = (x: number, y: number, v: number) => { obj({ frame: `lounger${v}`, x, y }); rect(x - 0.5, y - 0.45, x + 0.9, y + 0.45, 0.5); };
-  umb(48, 16, 0); lounger(48.6, 17.5, 0);
+  umb(48, 12.5, 0); lounger(48.6, 14.0, 0);
   umb(50.5, 22, 2); lounger(51.2, 23.5, 1);
   umb(48.5, 27.5, 1); lounger(49.2, 29, 2);
   umb(50, 44, 0); lounger(50.6, 45.6, 1);
   obj({ frame: 'towel0', x: 51.5, y: 31.6, flat: true, shadow: false }); obj({ frame: 'towel1', x: 48.2, y: 38.4, flat: true, shadow: false });
   const rockAt = (x: number, y: number, v: number, r: number, h: number) => { obj({ frame: `rock${v}`, x, y }); circle(x, y, r, h); };
-  rockAt(51.5, 11.5, 2, 1.3, 1.6); rockAt(50.2, 10.2, 0, 0.8, 0.8); rockAt(52.4, 51.5, 2, 1.3, 1.6); rockAt(50.8, 53.0, 1, 0.6, 0.5);
+  rockAt(51.5, 12.0, 2, 1.3, 1.6); rockAt(52.4, 22.6, 0, 0.8, 0.8); rockAt(52.4, 51.5, 2, 1.3, 1.6); rockAt(50.8, 53.0, 1, 0.6, 0.5);
   rockAt(9, 46, 0, 0.8, 0.8); rockAt(8, 16, 1, 0.6, 0.5);
 
-  // ---------------- píer com roda-gigante (no mar)
-  obj({ frame: 'pier', x: 50.5, y: 38.6, flat: true });
-  const walkable = [{ x0: 50.5, y0: 38.6, x1: 62.5, y1: 41.2 }];
-  rect(50.5, 38.45, 62.5, 38.62, 1.4); rect(50.5, 41.18, 62.5, 41.35, 1.4); // guarda-corpos
-  obj({ frame: 'ferris_0', x: 59.5, y: 39.9, anim: { frames: 8, fps: 4 }, big: true, sortRect: { x0: 56.3, y0: 38.1, x1: 62.7, y1: 41.7 } });
-  rect(56.6, 38.7, 62.4, 41.1, 9);
-  interactables.push({ id: 'roda', kind: 'landmark', x: 55.6, y: 39.9, radius: 2.0, markerZ: 2.6, title: 'Roda-Gigante da Orla',
+  // ---------------- píer com roda-gigante (nordeste, ao fundo) e marcos no mar
+  obj({ frame: 'pier', x: 51.0, y: 16.6, flat: true });
+  const walkable = [{ x0: 51.0, y0: 16.6, x1: 63.0, y1: 19.2 }];
+  rect(51.0, 16.45, 63.0, 16.62, 1.4); rect(51.0, 19.18, 63.0, 19.35, 1.4); // guarda-corpos
+  obj({ frame: 'ferris_0', x: 60.0, y: 17.9, anim: { frames: 8, fps: 4 }, big: true, sortRect: { x0: 56.8, y0: 16.1, x1: 63.2, y1: 19.7 } });
+  rect(57.1, 16.7, 62.9, 19.1, 9);
+  interactables.push({ id: 'roda', kind: 'landmark', x: 56.0, y: 17.9, radius: 2.0, markerZ: 2.6, title: 'Roda-Gigante da Orla',
     info: { Altura: '14 m', Cabines: '16', Situação: 'Passeios em breve' } });
-  // farol, barcos e ilhas ao fundo
-  obj({ frame: 'lighthouse', x: 60.5, y: 9.5, noFade: true });
-  obj({ frame: 'rock2', x: 59.6, y: 10.6 }); obj({ frame: 'rock0', x: 61.6, y: 8.8 });
-  obj({ frame: 'boat_a', x: 58, y: 26, bob: 1, shadow: false, noFade: true });
+  obj({ frame: 'lighthouse', x: 59.0, y: 5.5, noFade: true });
+  obj({ frame: 'rock2', x: 58.2, y: 6.6 }); obj({ frame: 'rock0', x: 60.2, y: 4.8 });
+  obj({ frame: 'boat_a', x: 59, y: 30, bob: 1, shadow: false, noFade: true });
   obj({ frame: 'boat_b', x: 6, y: 58, bob: 2, shadow: false, noFade: true });
   obj({ frame: 'island_a', x: 4, y: 3, shadow: false, noFade: true });
   obj({ frame: 'island_b', x: 2, y: 30, shadow: false, noFade: true });
@@ -305,20 +304,22 @@ export function buildMap(): MapDef {
   // ---------------- NPCs
   const npcs: NpcDef[] = [
     { sheet: 0, name: 'Seu Bené · Pescador', speed: 0.9, path: [{ x: 49, y: 31 }, { x: 52, y: 33 }, { x: 51.5, y: 36 }, { x: 48.5, y: 34.5 }],
-      lines: ['Bom dia! O mar tá calminho hoje, ótimo pra pescar.', 'Dizem que logo vão vender aqueles terrenos perto da praça…', 'Já subiu na roda-gigante do píer? A vista do pôr do sol é linda!', 'Já provou a água de coco do carrinho? É a melhor da ilha.'] },
-    { sheet: 1, name: 'Lia', speed: 1.4, path: [{ x: 43.5, y: 14 }, { x: 43.5, y: 44 }],
-      lines: ['Corro todo fim de tarde pelo calçadão!', 'Você é novo no bairro? Seja bem-vindo!'] },
-    { sheet: 2, name: 'Rafa', speed: 1.2, path: [{ x: 15.5, y: 16 }, { x: 15.5, y: 42.5 }, { x: 38.5, y: 42.5 }, { x: 38.5, y: 16 }],
-      lines: ['E aí! Tô esperando abrir a venda dos terrenos pra construir minha casa.', 'O ônibus circular passa ali na orla. Pontualíssimo!'] },
-    { sheet: 3, name: 'Duda', speed: 1.1, path: [{ x: 27.5, y: 18.8 }, { x: 33.8, y: 18.8 }, { x: 33.8, y: 25.4 }, { x: 27.5, y: 25.4 }],
-      lines: ['Adoro esse ipê rosa da praça. Fica lindo nessa época!', 'O café ali faz um pão de queijo incrível.'] },
-    { sheet: 4, name: 'Dona Cida · Moradora', speed: 0.7, path: [{ x: 17.5, y: 23.5 }, { x: 23.5, y: 23.5 }],
-      lines: ['Moro aqui há 30 anos, meu filho. Esse bairro só melhora!', 'Cuidado ao atravessar a rua, viu? Use a faixa.'] },
+      lines: ['Boa tarde! O mar tá calminho hoje, ótimo pra pescar.', 'Já subiu na roda-gigante do píer? A vista do pôr do sol é linda!', 'Já provou a água de coco do carrinho? É a melhor da ilha.'] },
+    { sheet: 1, name: 'Tomás', speed: 1.8, path: [{ x: 43.5, y: 14 }, { x: 43.5, y: 45 }],
+      lines: ['Treino todo fim de tarde aqui no calçadão!', 'Você é novo no bairro? Seja bem-vindo à Ilha!'] },
+    { sheet: 2, name: 'Vitória', speed: 1.0, path: [{ x: 27.5, y: 18.8 }, { x: 33.8, y: 18.8 }, { x: 33.8, y: 25.4 }, { x: 27.5, y: 25.4 }],
+      lines: ['Adoro esse ipê rosa da praça. Fica lindo nessa época!', 'O café ali do lado faz um pão de queijo incrível.'] },
+    { sheet: 3, name: 'Seu Oscar · Corretor', speed: 0.8, path: [{ x: 15.5, y: 24 }, { x: 15.5, y: 31.5 }],
+      lines: ['Esses terrenos com a borda verde estão livres. Em breve abriremos as vendas!', 'O Terreno 01 tem 20 × 20 m, pertinho da praça. Ótimo investimento!'] },
+    { sheet: 4, name: 'Ana', speed: 0.9, path: [{ x: 17.5, y: 23.0 }, { x: 23.5, y: 23.0 }],
+      lines: ['Vim tomar um café no fim da tarde. Melhor hora do dia!', 'Cuidado ao atravessar a rua, viu? Use a faixa.'] },
+    { sheet: 5, name: 'Zé · Mestre de Obras', speed: 0.7, path: [{ x: 18, y: 27 }, { x: 21, y: 28.5 }],
+      lines: ['Tô medindo o terreno. Quando abrirem as vendas, a gente constrói rapidinho!', 'Casa boa é casa com varanda e telhado de cerâmica.'] },
   ];
   npcs.forEach((n, i) => interactables.push({ id: `npc${i}`, kind: 'npc', x: 0, y: 0, radius: 1.6, markerZ: 3.6, title: n.name, info: {}, npc: i }));
 
   const regions = [
-    { name: 'Píer da Roda-Gigante', x0: 50, y0: 37, x1: 66, y1: 43 },
+    { name: 'Píer da Roda-Gigante', x0: 50, y0: 15, x1: 66, y1: 21 },
     { name: 'Praia da Ilha', x0: 45, y0: 0, x1: 66, y1: 66 },
     { name: 'Calçadão da Orla', x0: 42, y0: 11, x1: 45, y1: 48 },
     { name: 'Praça do Ipê', x0: 24, y0: 16, x1: 38, y1: 29 },
@@ -329,6 +330,6 @@ export function buildMap(): MapDef {
 
   return {
     terrain, roadDir, centerLine, crossing, walkable, objects, colliders, interactables, lots, busRoute, busStop: stop,
-    spawn: { x: 43.2, y: 24.6 }, npcs, regions,
+    spawn: { x: 46.8, y: 24.2 }, npcs, regions,
   };
 }

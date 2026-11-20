@@ -124,7 +124,13 @@ export async function lighthouse(): Promise<Sprite> {
 
 export async function sailboat(rot: number): Promise<Sprite> {
   const m = transformMesh(await model('sailboat'), { fitHeight: 5.5, rotY: rot });
-  for (const mm of m.mats) mm.tint = [1.1, 1.05, 1.0];
+  const h = m.max[1] - m.min[1];
+  for (const mm of m.mats) {
+    mm.tint = [1.1, 1.05, 1.0];
+    if (/Ship miniature/i.test(mm.name)) mm.hidden = true;                 // suporte de miniatura
+    if (/boat_Baked/i.test(mm.name)) mm.fn = (p) => ((p[1] - m.min[1]) / h < 0.075 ? [36, 62, 118] : [240, 238, 232]); // casco branco/azul
+    if (/ladder_Baked/i.test(mm.name)) mm.fn = () => [176, 128, 84];
+  }
   return R([], [inst(m)], { colors: 32, shadow: false });
 }
 

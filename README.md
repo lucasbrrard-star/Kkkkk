@@ -1,90 +1,105 @@
-# Cidade Viva — Ilha Inicial (protótipo v0.1)
+# Cidade Viva — Ilha Inicial (protótipo v0.2)
 
-Protótipo jogável de um RPG social isométrico em **pixel art HD** (Phaser 3 + TypeScript + Vite).
-Tem uma pequena ilha costeira com um bairro de três casas, praia, calçadão, praça, ponto de ônibus,
-um NPC e um personagem controlável em 8 direções, com caminhada, corrida e pulo 2.5D.
+Protótipo jogável de um RPG social isométrico em **pixel art HD**, feito com Phaser 3, TypeScript e Vite. Uma ilha costeira brasileira ao pôr do sol tem:
 
-![Praia](docs/screenshots/desktop-npc.png)
+- calçadão em ondas, praia, praça com chafariz e ipês, café, três casas e três terrenos livres;
+- píer com roda-gigante, farol, barcos e ilha com vilarejo ao fundo;
+- ônibus circular e seis moradores andando pela cidade;
+- um personagem controlável em 8 direções, que anda, corre e pula (2.5D).
+
+![Cidade Viva](docs/screenshots/mobile-paisagem.png)
 
 ## Como executar
 
 ```bash
 npm install
-npm run dev        # abre em http://localhost:5173 (use --host para testar no celular pela rede)
+npm run dev        # http://localhost:5173 (use --host para testar no celular pela rede)
 npm run build      # gera dist/ (site estático)
 npm run preview    # serve o build
-npm run art        # regenera todos os sprites/tiles em public/assets (≈3 s)
-npm run test:e2e   # testes Playwright (com o `npm run dev` rodando)
+npm run test:e2e   # 31 verificações com Playwright (com o `npm run dev` rodando)
 ```
+
+### Regenerar a arte (opcional)
+
+Os sprites prontos já estão em `public/assets/`. Para gerar de novo:
+
+```bash
+./tools/fetch-models.sh                 # baixa os modelos gratuitos do BlenderKit (cenário)
+npm run art                             # tiles + objetos + personagens (~4 min)
+npx tsx art/build.ts objects            # só objetos  ·  tiles  ·  chars
+```
+
+Os modelos de personagem são baixados com `python3 tools/bk-download.py "<nome>" <id> tools/models/char_N.glb`. Os ids estão em `CREDITS.md`.
 
 ## Controles
 
 | Ação | Teclado | Celular |
 |---|---|---|
-| Mover | WASD / setas | Analógico (canto inferior esquerdo, proporcional à inclinação) |
-| Correr | Shift (segurar) | Botão **Correr** (segurar) |
-| Pular | Espaço | Botão **Pular** |
-| Interagir | E | Botão **Interagir** (fica verde perto de algo) |
+| Mover | WASD / setas | Analógico (proporcional à inclinação) |
+| Correr | Shift (segurar) | Botão de corrida (segurar) |
+| Pular | Espaço | Botão ↑ |
+| Interagir | E | Botão de mão (fica verde perto de algo) |
 | Menu | Esc | Engrenagem |
 
-## O que está implementado
+O menu lateral tem **Mapa**, **Construir** (catálogo de casas com preços), **Decorar**, **Loja**, **Eventos** e **Bairros**. O botão de chat mostra frases rápidas em um balão.
 
-- **Personagem chibi** (moletom vermelho, camiseta branca, jeans, tênis, mochila) com **8 direções reais**, sem espelhamento:
-  idle com respiração (6 quadros), caminhada (8), corrida (8) e pulo em 6 fases (preparação → aterrissagem). Ver `docs/animacoes.png`.
-  A cadência dos passos acompanha a velocidade real (sem "patinar"). Caminhar ↔ correr mantém a fase do passo, e ao virar o personagem gira um octante por vez.
-- **Pulo 2.5D**: a altura visual `z` é separada da posição no chão. A sombra encolhe com a altura, e as colisões consideram a altura: dá para pular bancos, estacas e cercas baixas, mas não casas e árvores.
-- **Mapa por tilemap isométrico** (Phaser Tilemap) em camadas: solo, areia, água, espuma, ruas e calçadas. Por cima vêm os objetos posicionados no mundo com ordenação de profundidade. Objetos grandes (casas, ônibus) usam ordenação por retângulo de chão, e objetos que cobrem o personagem ficam translúcidos.
-- **Ilha**: praia com ondas e espuma animadas, brilhos no mar, pedras, conchas, guarda-sóis, espreguiçadeiras e cangas. Tem também um calçadão em ondas (pedra portuguesa), três casas (popular com caixa d'água, moderna de dois pavimentos e casa de praia com varanda), três terrenos vazios, uma praça com chafariz, ipês e bancos, ruas com faixa central e faixas de pedestres, postes, lixeiras, placas e ponto de ônibus.
-- **Colisões** circulares e retangulares coerentes com o desenho (sem caixas gigantes), água e limites do mapa, além de colisores dinâmicos (ônibus, NPC).
-- **Interações**: casas (ficha da residência), terrenos ("Disponível · em breve será possível comprar"), ponto de ônibus (nome, linha e **tempo real até o próximo ônibus**), NPC pescador com falas, carrinho de coco e placa de rua.
-- **Vida ambiente**: palmeiras e árvores balançando, chafariz, gaivotas com sombra e brilho das luzes. Um **ônibus circular** percorre o anel de ruas pela mão direita, faz curvas, para no ponto e espera se você ficar na frente.
-- **HUD**: nome, avatar, região atual, 30.000 moedas e engrenagem. **Menu de pausa**: Continuar, Configurações (nome, som, FPS, zoom, controles de toque, horário dia/pôr do sol/noite), Controles e Reiniciar demonstração.
-- **Mobile**: joystick com zona morta e multitoque (joystick + Correr ao mesmo tempo), respeito às áreas seguras e bloqueio de gestos do navegador. Renderiza em pixels físicos (DPR) com **zoom inteiro** de câmera para manter a pixel art nítida.
-- **Áudio** procedural (Web Audio): mar ambiente, passos, pulo e UI. Não usa arquivos de som.
+## Pipeline de arte: modelos 3D → pixel art HD
 
-## Arquitetura
+O fluxo segue o "Blender → sprite" pedido no briefing, mas roda inteiro em Node e é reproduzível:
+
+1. **Modelos gratuitos do BlenderKit** (palmeiras, ipês, flores, postes, bancos, chafariz, farol, barcos, guarda-sóis, espreguiçadeiras, ponto de ônibus e personagens) chegam como GLB com compressão Draco e texturas WebP. `art/mesh.ts` lê esses arquivos com glTF-Transform e sharp.
+2. **Personagens com esqueleto Rigify** (`art/skin.ts`):
+   - Recebem pose procedural (idle, caminhada, corrida e pulo em 6 fases) guiada pela direção dos ossos.
+   - A malha é deformada por skinning linear.
+   - A pele que fica sob a roupa e as malhas com bind inconsistente são descartadas automaticamente.
+3. **Renderizador HD** (`art/hd.ts`):
+   - Câmera ortográfica dimétrica 2:1 com supersampling 3×3.
+   - Luz de fim de tarde em faixas (cel shading), com sol quente e sombras arroxeadas.
+   - Sombras projetadas com teste de alfa, então as folhas geram sombra rendada.
+   - Paleta reduzida por k-means, contorno seletivo e linhas internas.
+   - Grade espacial para acelerar.
+4. **Cenário procedural** (`art/env.ts`): casas brasileiras com janelas acesas, telhas capa-canal, varandas, caixa d'água e piscina. Também café com toldo e letreiro, roda-gigante animada (8 quadros), píer, ilha com vilarejo, ônibus em 8 direções e gaivotas.
+5. **Tiles 64×32** (`art/tiles.ts`): grama com flores, areia com conchas, mar animado com brilhos dourados, espuma, asfalto, faixas, calçada de pedra rosada, calçadão em ondas e piso da praça.
+
+Os créditos e licenças de cada modelo estão em [`CREDITS.md`](CREDITS.md). O jogo não distribui os modelos 3D, apenas os sprites renderizados.
+
+## Arquitetura do jogo
 
 ```
-art/                 pipeline de produção dos assets (roda no Node, gera PNG/JSON)
-  rt.ts              mini-renderizador ortográfico: primitivas 3D → pixel art (cel shading, sel-out, sombras)
-  character.ts       rig do personagem, poses procedurais e pintura do rosto pixel a pixel
-  objects.ts         casas, vegetação, mobiliário urbano, ônibus (8 direções)
-  tiles.ts           tiles isométricos 32×16 sem emendas (padrões periódicos)
-  build.ts           monta tileset, atlas (com âncoras) e spritesheets
 src/
-  config.ts          velocidades, física, animação e câmera (valores reutilizáveis)
+  config.ts          velocidades, física, animação, câmera e economia (valores reutilizáveis)
   core/              iso.ts (projeção), events.ts (barramento jogo ↔ UI)
-  world/             MapData (dados do mapa), World (render do tilemap/objetos), Ambient
+  world/             MapData (dados do mapa), World (tilemap + objetos + bordas dos terrenos), Ambient
   entities/          Actor (modelo lógico), PlayerController, CharacterView, Npc, Bus
   systems/           InputController, AnimationController, CameraController, CollisionSystem, InteractionSystem
-  ui/Ui.ts           HUD, joystick, botões, painéis, diálogo e menu (DOM)
+  ui/                Ui.ts (HUD, catálogo, joystick, painéis, minimapa, menu) e icons.ts (ícones ilustrados)
   scenes/            BootScene (carregamento), GameScene (orquestração)
-tests/e2e.mjs        31 verificações automatizadas (desktop + celular)
+art/                 pipeline de produção dos assets (Node)
+tools/               busca, download e inspeção de modelos do BlenderKit e créditos
+tests/e2e.mjs        verificações automatizadas (desktop + celular)
 ```
 
-A lógica fica separada da renderização: `Actor`/`PlayerController` não conhecem sprites. Os dados do mapa (`MapData`) ficam separados das regras de interação (`InteractionSystem`). Terrenos, casas e interações são listas de dados, prontas para receber donos, compra e participantes no futuro.
+A lógica fica separada da renderização: `Actor` e `PlayerController` não conhecem sprites. O mapa (`MapData`) fica separado das regras de interação (`InteractionSystem`). Terrenos, casas, NPCs e interações são dados, prontos para ganhar donos, compra e participantes no futuro.
 
-## Assets e licenças
+## Testes
 
-Todos os gráficos são **originais**, gerados pelo pipeline em `art/` ("modelagem 3D simples → render ortográfico → pixel art"),
-equivalente ao fluxo Blender → sprite sugerido, mas reprodutível com `npm run art`. Não há filtro de pixelização sobre imagens realistas:
-cada texel é calculado diretamente com rampas de cor quantizadas e contorno seletivo. Avaliei Kenney, OpenGameArt, itch.io e Quaternius
-(CC0 / licenças livres), mas não incorporei nenhum asset de terceiros para manter um estilo único e evitar mistura de licenças.
-Fonte da interface: Baloo 2 (Google Fonts, SIL Open Font License). Dependência: Phaser 3.80.1 (MIT).
+`npm run test:e2e` → **31/31 verificações aprovadas**:
+- início e mapa em 6 camadas;
+- caminhada, corrida, parada, câmera, pulo e aterrissagem;
+- colisões com casa, mar e limites, e pulo sobre o banco correndo;
+- interações com terreno, casa, ponto de ônibus e NPC;
+- ônibus circulando;
+- menu completo e digitação sem conflito com o teclado de jogo;
+- joystick proporcional, multitoque, retorno do joystick, botões de pular, interagir e engrenagem;
+- interface ocupando cerca de 21% da tela;
+- nenhum erro no console.
 
-## Testes (resultado atual)
-
-`npm run test:e2e` → **31/31 verificações aprovadas**: início, mapa, personagem, caminhada, corrida, parada, câmera, pulo,
-aterrissagem, colisão com casa, mar e limites, pulo sobre obstáculo baixo, interações (terreno, casa, ponto, NPC), ônibus,
-menu (Esc, configurações, controles, reiniciar, continuar), digitação sem conflito com o teclado de jogo, controles de toque,
-joystick proporcional, multitoque joystick + correr, retorno do joystick, botões Pular e Interagir, menu por toque,
-interface ocupando 13,7% da tela, e nenhum erro no console. Capturas em `docs/screenshots/`.
+As capturas ficam em `docs/screenshots/`.
 
 ## Limitações conhecidas
 
-- O FPS foi medido somente em navegador headless com GPU emulada por software (~26 FPS, que subestima o real). Ainda falta medir em aparelhos reais. O jogo exibe um contador de FPS (menu → Configurações).
-- O rosto do personagem é pintado proceduralmente; ainda não é uma ilustração 100% manual quadro a quadro.
-- A orla da ilha segue a grade de tiles (contorno em "degraus"), e não há transição suave de profundidade entre os tons do mar.
-- A ordenação de profundidade de objetos grandes usa uma heurística por retângulo e pode falhar em sobreposições raras entre dois objetos grandes.
-- O ônibus é decorativo (não há embarque), e o NPC tem rota fixa simples.
-- Economia, compra de terrenos e perfis são apenas visuais nesta versão. A arquitetura está preparada, mas os sistemas não foram implementados.
+- O FPS só foi medido em navegador headless com renderização por software (cerca de 17 FPS, abaixo do que se espera em aparelhos reais). Ainda falta medir em celulares de verdade; há um contador em Configurações → Mostrar FPS.
+- O atlas de objetos tem uma página de 4089×2502. Aparelhos muito antigos, com limite de textura de 2048, não suportariam.
+- As animações dos personagens são procedurais, não capturas de movimento. Os NPCs têm apenas idle e caminhada.
+- A orla segue a grade de tiles, com contorno "em degraus".
+- Compra de terrenos, economia, eventos, loja e bairros são apenas visuais nesta versão. O catálogo de construção mostra os itens, mas a compra aparece como "em breve".

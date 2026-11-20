@@ -25,7 +25,7 @@ export class Bus {
   depth = 0;
 
   constructor(private scene: Phaser.Scene, route: P[], stop: P, private world: World) {
-    this.buildPath(route, 2.2);
+    this.buildPath(route, 3.0);
     // posição do ponto ao longo do caminho
     let best = 0, bd = Infinity;
     for (let i = 0; i < this.path.length; i++) {
@@ -36,7 +36,7 @@ export class Bus {
     this.s = (this.stopS - 22 + this.total) % this.total;
     this.sprite = scene.add.image(0, 0, 'objects', 'bus_1');
     this.shadow = scene.add.image(0, 0, 'objects', 'bus_1__sh').setDepth(DEPTH.shadows + 5);
-    for (let i = 0; i < 3; i++) this.colliders.push({ x: 0, y: 0, r: 0.72, h: 3, id: 'bus' + i });
+    for (let i = 0; i < 3; i++) this.colliders.push({ x: 0, y: 0, r: 0.8, h: 3, id: 'bus' + i });
     this.place();
   }
 
@@ -85,10 +85,10 @@ export class Bus {
 
   update(dt: number, player: { x: number; y: number }) {
     // pedestre à frente → espera
-    const ahead = { x: this.x + this.hx * 3.2, y: this.y + this.hy * 3.2 };
+    const ahead = { x: this.x + this.hx * 3.8, y: this.y + this.hy * 3.8 };
     const dx = player.x - ahead.x, dy = player.y - ahead.y;
     const along = dx * this.hx + dy * this.hy, lat = Math.abs(-dx * this.hy + dy * this.hx);
-    const blocked = Math.abs(along) < 1.8 && lat < 1.2;
+    const blocked = Math.abs(along) < 2.0 && lat < 1.4;
 
     let target = CONFIG.bus.speed;
     const toStop = ((this.stopS - this.s) % this.total + this.total) % this.total;
@@ -119,12 +119,13 @@ export class Bus {
     }
     const sp = toScreen(p.x, p.y);
     this.sprite.setPosition(Math.round(sp.x), Math.round(sp.y));
+    this.sprite.setDepth(this.depth);
     this.shadow.setPosition(Math.round(sp.x), Math.round(sp.y));
     for (let i = 0; i < 3; i++) {
-      const o = (i - 1) * 1.6;
+      const o = (i - 1) * 1.8;
       this.colliders[i].x = p.x + this.hx * o; this.colliders[i].y = p.y + this.hy * o;
     }
-    const L = 2.4, W = 0.7;
+    const L = 2.7, W = 0.75;
     const xs = [p.x + this.hx * L + this.hy * W, p.x + this.hx * L - this.hy * W, p.x - this.hx * L + this.hy * W, p.x - this.hx * L - this.hy * W];
     const ys = [p.y + this.hy * L - this.hx * W, p.y + this.hy * L + this.hx * W, p.y - this.hy * L - this.hx * W, p.y - this.hy * L + this.hx * W];
     this.sortRect = { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };

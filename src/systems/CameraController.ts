@@ -19,8 +19,9 @@ export class CameraController {
   }
 
   applyZoom() {
-    const short = Math.min(this.cam.width, this.cam.height);
-    const auto = Math.max(1, Math.round(short / CONFIG.camera.targetShortSide));
+    // paisagem: mostra uma boa porção da cidade (como a referência); em pé: aproxima
+    const W = this.cam.width, H = this.cam.height;
+    const auto = W >= H ? Math.max(1, Math.round(W / 1500)) : Math.max(1, Math.round(W / 560));
     this.zoom = Math.max(1, auto + this.zoomOffset);
     this.cam.setZoom(this.zoom);
   }

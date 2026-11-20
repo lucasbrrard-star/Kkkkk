@@ -2,24 +2,20 @@
 import { CONFIG } from '../config';
 import { dirIndexFromWorld } from '../core/iso';
 import { CollisionSystem } from '../systems/CollisionSystem';
+import { NpcDef } from '../world/MapData';
 import { Actor, stepFacing } from './Actor';
-
-export const NPC_LINES = [
-  'Bom dia! O mar tá calminho hoje, ótimo pra pescar.',
-  'Dizem que logo vão vender aqueles terrenos perto da praça…',
-  'O ônibus circular passa ali na orla. Pontualíssimo!',
-  'Já provou a água de coco do carrinho? É a melhor da ilha.',
-];
 
 export class Npc {
   actor: Actor;
-  private target = 0;
+  private target = 1;
   private wait = 1;
   talking = 0;
   lineIdx = 0;
 
-  constructor(private path: { x: number; y: number }[], private col: CollisionSystem) {
-    this.actor = new Actor(path[0].x, path[0].y, 0.25, 'npc');
+  constructor(public def: NpcDef, private col: CollisionSystem, public index: number) {
+    const p = def.path[0];
+    this.actor = new Actor(p.x, p.y, 0.3, `npc${index}`);
+    this.wait = Math.random() * 2;
   }
 
   talkTo(px: number, py: number): string {
@@ -27,7 +23,7 @@ export class Npc {
     const a = this.actor;
     a.facing = dirIndexFromWorld(px - a.x, py - a.y);
     a.vx = a.vy = 0;
-    const line = NPC_LINES[this.lineIdx % NPC_LINES.length];
+    const line = this.def.lines[this.lineIdx % this.def.lines.length];
     this.lineIdx++;
     return line;
   }
@@ -45,21 +41,21 @@ export class Npc {
       a.speed = 0;
       a.setState('idle');
     } else {
-      const t = this.path[this.target];
+      const t = this.def.path[this.target];
       const dx = t.x - a.x, dy = t.y - a.y;
       const d = Math.hypot(dx, dy);
-      if (d < 0.15) {
-        this.target = (this.target + 1) % this.path.length;
-        this.wait = 1.5 + Math.random() * 2.5;
+      if (d < 0.2) {
+        this.target = (this.target + 1) % this.def.path.length;
+        this.wait = 1 + Math.random() * 2.5;
       } else {
-        const sp = CONFIG.player.walkSpeed * 0.55;
+        const sp = this.def.speed * (CONFIG.player.walkSpeed / 2.2);
         a.vx = (dx / d) * sp; a.vy = (dy / d) * sp;
         a.facing = dirIndexFromWorld(dx, dy);
         const r = this.col.move(a.x, a.y, a.vx * dt, a.vy * dt, a.radius, 0, a.id);
         a.speed = Math.hypot(r.x - a.x, r.y - a.y) / Math.max(dt, 1e-4);
         a.x = r.x; a.y = r.y;
         a.setState(a.speed > 0.1 ? 'walk' : 'idle');
-        if (a.speed < 0.05) this.wait = 0.6; // bloqueado (ex.: jogador na frente): espera
+        if (a.speed < 0.05) this.wait = 0.6; // bloqueado: espera
       }
     }
     stepFacing(a, dt, 0.06);

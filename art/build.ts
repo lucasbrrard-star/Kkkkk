@@ -13,14 +13,15 @@ import * as T from './tiles';
 import * as O from './objects';
 import * as E from './env';
 import * as P from './props';
-import { renderSheet, PLAYER_LOOK, NPC_LOOK, NPC_LOOKS, FRAME_W, FRAME_H, ANCHOR_X, ANCHOR_Y, DIRS } from './character';
+import { DIRS } from './character';
+import { renderSheet3D, PLAYER_DEF, NPC_DEFS, C3 } from './chars3d';
 
 const OUT = path.resolve('public/assets');
 fs.mkdirSync(OUT, { recursive: true });
-for (const f of fs.readdirSync(OUT)) if (/^(objects\d*\.(png|json)|npc.*\.png)$/.test(f)) fs.rmSync(path.join(OUT, f));
 const t0 = Date.now();
 const only = process.argv[2]; // opcional: 'tiles' | 'objects' | 'chars'
 const log = (m: string) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${m}`);
+const clean = (re: RegExp) => { for (const f of fs.readdirSync(OUT)) if (re.test(f)) fs.rmSync(path.join(OUT, f)); };
 
 // ---------------------------------------------------------------- tileset
 if (!only || only === 'tiles') {
@@ -93,7 +94,7 @@ if (!only || only === 'objects') {
   add('lamp', await P.streetLamp());
   add('bench_x', await P.bench(0)); add('bench_z', await P.bench(90));
   addAnim('fountain', await seq(3, (f) => P.fountain(f)));
-  add('busstop', await P.busStop(90));
+  add('busstop', await P.busStop(0));
   add('umb0', await P.umbrella(0, 0)); add('umb1', await P.umbrella(40, 150)); add('umb2', await P.umbrella(80, 210));
   add('lounger0', await P.lounger(0, [72, 168, 222])); add('lounger1', await P.lounger(0, [236, 104, 92])); add('lounger2', await P.lounger(90, [242, 196, 70]));
   add('cafetable', E.cafeTable());
@@ -111,6 +112,7 @@ if (!only || only === 'objects') {
   log(`objetos: ${entries.length}`);
 
   // multiatlas (páginas de até 4096×4096)
+  clean(/^objects\d*\.(png|json)$/);
   const pages = packPages(entries.map((e) => e.img), 4096);
   const textures = pages.map((pg, pi) => {
     const img = newImage(pg.w, pg.h);
@@ -132,16 +134,17 @@ if (!only || only === 'objects') {
 
 // ---------------------------------------------------------------- personagens
 if (!only || only === 'chars') {
-  const pl = renderSheet(PLAYER_LOOK, ['idle', 'walk', 'run', 'jump']);
+  // personagens 3D (BlenderKit, Rigify) → spritesheets 8 direções
+  clean(/^npc.*\.png$/);
+  const pl = await renderSheet3D(PLAYER_DEF, ['idle', 'walk', 'run', 'jump'], log);
   writePNG(path.join(OUT, 'player.png'), pl.img);
-  const npcs = [NPC_LOOK, ...NPC_LOOKS];
-  let npcLayout = null;
-  for (let i = 0; i < npcs.length; i++) {
-    const s = renderSheet(npcs[i], ['idle', 'walk']);
+  let npcLayout: { cols: number; layout: Record<string, { start: number; frames: number }> } | null = null;
+  for (let i = 0; i < NPC_DEFS.length; i++) {
+    const s = await renderSheet3D(NPC_DEFS[i], ['idle', 'walk'], log);
     writePNG(path.join(OUT, `npc${i}.png`), s.img);
     npcLayout = { cols: s.cols, layout: s.layout };
   }
-  writeMeta({ character: { frameW: FRAME_W, frameH: FRAME_H, anchorX: ANCHOR_X, anchorY: ANCHOR_Y, dirs: DIRS, player: { cols: pl.cols, layout: pl.layout }, npc: npcLayout, npcCount: npcs.length, npcNames: npcs.map((n) => n.name ?? 'pescador') } });
+  writeMeta({ character: { frameW: C3.FW, frameH: C3.FH, anchorX: C3.AX, anchorY: C3.AY, dirs: DIRS, player: { cols: pl.cols, layout: pl.layout }, npc: npcLayout, npcCount: NPC_DEFS.length, npcNames: NPC_DEFS.map((n) => n.name) } });
   log('personagens');
 }
 log('pronto');

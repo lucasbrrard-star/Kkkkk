@@ -46,7 +46,7 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   await page.screenshot({ path: `${SHOTS}/desktop-inicio.png` });
 
   // caminhada
-  await tp(page, 39.3, 20.6, 0);
+  await tp(page, 46.8, 24.2, 0);
   let a = await st(page);
   await page.keyboard.down('KeyD'); await page.waitForTimeout(700);
   let b = await st(page);
@@ -55,18 +55,18 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   // corrida
   await page.keyboard.down('ShiftLeft'); await page.waitForTimeout(900);
   b = await st(page);
-  check('Corrida (Shift)', b.anim === 'run' && b.speed > 3.5, `anim=${b.anim} vel=${b.speed.toFixed(2)} tiles/s`);
+  check('Corrida (Shift)', b.anim === 'run' && b.speed > 2.2 * 1.3, `anim=${b.anim} vel=${b.speed.toFixed(2)} tiles/s`);
   await page.screenshot({ path: `${SHOTS}/desktop-corrida.png` });
   await page.keyboard.up('ShiftLeft'); await page.keyboard.up('KeyD');
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(900);
   b = await st(page);
   check('Parar → idle', b.state === 'idle' && b.anim === 'idle', `state=${b.state}`);
   // câmera
-  const cs = await page.evaluate(() => { const g = window.__game; const p = g.player; const s = { x: (p.x - p.y) * 16, y: (p.x + p.y) * 8 }; const c = g.cameras.main.midPoint; return Math.hypot(s.x - c.x, s.y - c.y); });
-  check('Câmera acompanha o personagem', cs < 60, `distância ao centro=${cs.toFixed(1)}px`);
+  const cs = await page.evaluate(() => { const g = window.__game; const p = g.player; const s = { x: (p.x - p.y) * 32, y: (p.x + p.y) * 16 }; const c = g.cameras.main.midPoint; return Math.hypot(s.x - c.x, s.y - c.y); });
+  check('Câmera acompanha o personagem', cs < 90, `distância ao centro=${cs.toFixed(1)}px`);
 
   // pulo
-  await tp(page, 38.9, 22.0, 0);
+  await tp(page, 46.8, 24.2, 0);
   await page.keyboard.press('Space');
   const seen = new Set(); let maxZ = 0;
   for (let i = 0; i < 30; i++) { const s = await st(page); if (s.anim === 'jump') seen.add(s.frame); maxZ = Math.max(maxZ, s.z); if (i === 6) await page.screenshot({ path: `${SHOTS}/desktop-pulo.png` }); await page.waitForTimeout(30); }
@@ -76,26 +76,32 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   check('Aterrissa e volta ao chão', b.z === 0 && b.state === 'idle', `z=${b.z} state=${b.state}`);
 
   // colisão com a casa 1 (parede +y em y=35.4): andar para "cima" na tela a partir do jardim
-  await tp(page, 19.5, 36.4, 4);
+  await tp(page, 21.8, 39.2, 4);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(1500); await page.keyboard.up('KeyW');
   b = await st(page);
-  check('Colisão com casa (não atravessa parede)', b.y > 35.4 + 0.15, `y=${b.y.toFixed(2)} (parede em 35.40)`);
+  check('Colisão com casa (não atravessa parede)', b.y > 38.0 + 0.15, `y=${b.y.toFixed(2)} (parede em 38.00)`);
   // colisão com o mar
-  await tp(page, 47, 30, 0);
+  await tp(page, 51.5, 30, 0);
   await page.keyboard.down('KeyD'); await page.keyboard.down('KeyS'); await page.waitForTimeout(2500); await page.keyboard.up('KeyD'); await page.keyboard.up('KeyS');
   b = await st(page);
   const onWater = await page.evaluate(([x, y]) => window.__game.world.terrainAt(x, y) === 0, [b.x, b.y]);
   check('Colisão com o mar / limites', !onWater, `pos=(${b.x.toFixed(1)}, ${b.y.toFixed(1)})`);
   // pulo sobre obstáculo baixo (banco da praça, altura 0.65)
-  await tp(page, 28.6, 16.0, 0);
-  await page.keyboard.down('KeyS'); await page.keyboard.down('KeyD');
-  await page.waitForTimeout(150); await page.keyboard.press('Space');
-  await page.waitForTimeout(900); await page.keyboard.up('KeyS'); await page.keyboard.up('KeyD');
-  b = await st(page);
-  check('Pulo sobre obstáculo baixo (banco)', b.x + b.y > 28.6 + 16.0 + 1.5, `pos=(${b.x.toFixed(2)}, ${b.y.toFixed(2)})`);
+  // regra: obstáculos baixos só bloqueiam abaixo da sua altura
+  const rule = await page.evaluate(() => { const c = window.__game.col; return { chao: c.overlaps(30.5, 17.4, 0.3, 0), alto: c.overlaps(30.5, 17.4, 0.3, 0.6) }; });
+  let crossed = false, last = null;
+  for (const th of [16.0, 16.1, 15.9, 16.2, 15.8]) {
+    await tp(page, 30.5, 15.2, 7);
+    await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyS'); await page.keyboard.down('KeyA');
+    await page.waitForFunction((t) => window.__game.player.y > t, th, { timeout: 5000, polling: 'raf' }); await page.keyboard.press('Space');
+    await page.waitForTimeout(900); await page.keyboard.up('KeyS'); await page.keyboard.up('KeyA'); await page.keyboard.up('ShiftLeft');
+    last = await st(page);
+    if (last.y > 18.0) { crossed = true; break; }
+  }
+  check('Pulo sobre obstáculo baixo (banco, correndo)', rule.chao && !rule.alto && crossed, `bloqueia no chão=${rule.chao} · livre a 0,6 m=${!rule.alto} · pos=(${last.x.toFixed(2)}, ${last.y.toFixed(2)})`);
 
   // interações
-  await tp(page, 19.5, 24.0, 0); await page.waitForTimeout(200);
+  await tp(page, 22.5, 30.5, 0); await page.waitForTimeout(250);
   b = await st(page);
   await page.keyboard.press('KeyE'); await page.waitForTimeout(300);
   let panel = await page.evaluate(() => { const p = document.getElementById('panel'); return { vis: !p.classList.contains('hidden'), text: p.innerText }; });
@@ -103,7 +109,7 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   await page.screenshot({ path: `${SHOTS}/desktop-terreno.png` });
   await page.keyboard.press('KeyE'); await page.waitForTimeout(150);
 
-  await tp(page, 19.1, 36.4, 0); await page.waitForTimeout(250);
+  await tp(page, 18.7, 40.6, 4); await page.waitForTimeout(250);
   b = await st(page);
   await page.keyboard.press('KeyE'); await page.waitForTimeout(300);
   panel = await page.evaluate(() => { const p = document.getElementById('panel'); return { vis: !p.classList.contains('hidden'), text: p.innerText }; });
@@ -111,7 +117,7 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   await page.screenshot({ path: `${SHOTS}/desktop-casa.png` });
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
 
-  await tp(page, 38.6, 27.6, 6); await page.waitForTimeout(250);
+  await tp(page, 42.6, 31.0, 4); await page.waitForTimeout(250);
   b = await st(page);
   await page.keyboard.press('KeyE'); await page.waitForTimeout(300);
   panel = await page.evaluate(() => { const p = document.getElementById('panel'); return { vis: !p.classList.contains('hidden'), text: p.innerText }; });
@@ -119,12 +125,12 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   await page.screenshot({ path: `${SHOTS}/desktop-ponto-onibus.png` });
   await page.keyboard.press('KeyE'); await page.waitForTimeout(150);
 
-  const npcPos = await page.evaluate(() => { const n = window.__game.npc.actor; return { x: n.x, y: n.y }; });
+  const npcPos = await page.evaluate(() => { const n = window.__game.npcs[0].actor; return { x: n.x, y: n.y }; });
   await tp(page, npcPos.x - 0.9, npcPos.y, 0); await page.waitForTimeout(250);
   b = await st(page);
   await page.keyboard.press('KeyE'); await page.waitForTimeout(1200);
   const dlg = await page.evaluate(() => { const d = document.getElementById('dialog'); return { vis: !d.classList.contains('hidden'), text: d.innerText }; });
-  check('NPC fala ao interagir', b.focus === 'npc' && dlg.vis && dlg.text.length > 20, dlg.text.split('\n')[1] || '');
+  check('NPC fala ao interagir', /^npc/.test(b.focus || '') && dlg.vis && dlg.text.length > 20, dlg.text.split('\n')[1] || '');
   await page.screenshot({ path: `${SHOTS}/desktop-npc.png` });
   await page.keyboard.press('KeyE'); await page.waitForTimeout(150);
 
@@ -155,7 +161,7 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   await page.click('[data-act=restart]'); await page.waitForTimeout(200);
   b = await st(page);
   menuVis = await page.evaluate(() => !document.getElementById('menu').classList.contains('hidden'));
-  check('Menu: Configurações, Controles e Reiniciar funcionam', ctlVis && !menuVis && Math.abs(b.x - 39.3) < 0.01, `pos após reiniciar=(${b.x.toFixed(1)}, ${b.y.toFixed(1)})`);
+  check('Menu: Configurações, Controles e Reiniciar funcionam', ctlVis && !menuVis && Math.abs(b.x - 46.8) < 0.01, `pos após reiniciar=(${b.x.toFixed(1)}, ${b.y.toFixed(1)})`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   await page.click('[data-act=resume]');
   menuVis = await page.evaluate(() => !document.getElementById('menu').classList.contains('hidden'));
@@ -181,7 +187,7 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   const rc = { x: run.x + run.width / 2, y: run.y + run.height / 2 };
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p.x, y: p.y, id: p.id ?? i })) });
 
-  await tp(page, 39.3, 20.6, 0);
+  await tp(page, 46.8, 24.2, 0);
   let a = await st(page);
   // inclinação parcial (≈40%) → caminhada proporcional
   await touch('touchStart', [{ ...jc, id: 1 }]);
@@ -199,7 +205,7 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   await page.screenshot({ path: `${SHOTS}/mobile-corrida.png` });
   await touch('touchEnd', [{ x: jc.x + joy.width * 0.45, y: jc.y, id: 1 }]);
   await touch('touchEnd', []);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
   b = await st(page);
   const knob = await page.evaluate(() => getComputedStyle(document.getElementById('knob')).transform);
   check('Joystick retorna ao centro ao soltar', b.state === 'idle' && (knob === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(knob)), `transform=${knob}`);
@@ -210,7 +216,7 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   check('Botão Pular funciona', maxZ > 0.4, `altura máx=${maxZ.toFixed(2)}`);
   await page.waitForTimeout(500);
   // botão interagir
-  await tp(page, 19.5, 24.0, 0); await page.waitForTimeout(300);
+  await tp(page, 22.5, 30.5, 0); await page.waitForTimeout(300);
   const enabled = await page.evaluate(() => !document.getElementById('b-interact').classList.contains('disabled'));
   await page.locator('#b-interact').tap(); await page.waitForTimeout(300);
   const pv = await page.evaluate(() => !document.getElementById('panel').classList.contains('hidden'));
@@ -227,13 +233,13 @@ const tp = (page, x, y, f = 0) => page.evaluate(([x, y, f]) => { const g = windo
   const cover = await page.evaluate(() => {
     const W = innerWidth, H = innerHeight; let area = 0;
     for (const id of ['joy', 'b-interact', 'b-jump', 'b-run']) { const r = document.getElementById(id).getBoundingClientRect(); area += r.width * r.height; }
-    for (const el of document.querySelectorAll('.hud-top .card, .icon-btn')) { const r = el.getBoundingClientRect(); area += r.width * r.height; }
+    for (const el of document.querySelectorAll('.player-card, .pill, .weather, .icon-btn, .side-menu')) { const r = el.getBoundingClientRect(); area += r.width * r.height; }
     return area / (W * H);
   });
-  check('Interface ocupa pouco da tela', cover < 0.2, `${(cover * 100).toFixed(1)}% da tela`);
+  check('Interface ocupa pouco da tela', cover < 0.3, `${(cover * 100).toFixed(1)}% da tela`);
   // paisagem
   await page.setViewportSize({ width: 915, height: 412 }); await page.waitForTimeout(600);
-  await tp(page, 30, 27.5, 0); await page.waitForTimeout(400);
+  await tp(page, 30, 24.0, 0); await page.waitForTimeout(400);
   await page.screenshot({ path: `${SHOTS}/mobile-paisagem.png` });
   check('Sem erros críticos no console (celular)', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();

@@ -29,6 +29,8 @@ export interface HDOpts {
   shadowAlpha?: number;
   bands?: number;          // faixas de luz para malhas
   exposure?: number;
+  yaw?: number;            // gira o modelo (via câmera/luz) — 8 direções sem refazer a BVH
+  outlineColor?: [number, number, number];
 }
 
 interface Sample { c: RGB; d: number; g: number }
@@ -51,7 +53,9 @@ function hsv2rgb(h: number, s: number, v: number): RGB {
 }
 
 function albedo(mm: MeshMat, mesh: Mesh, tri: number, u: number, v: number, p?: V3, n?: V3): [number, number, number, number] {
-  let r = mm.color[0] * 255, g = mm.color[1] * 255, b = mm.color[2] * 255, a = mm.color[3];
+  // baseColorFactor é linear → converte para sRGB
+  const lin = (v: number) => Math.pow(Math.max(0, v), 1 / 2.2) * 255;
+  let r = lin(mm.color[0]), g = lin(mm.color[1]), b = lin(mm.color[2]), a = mm.color[3];
   if (mm.fn && p && n) { const c = mm.fn(p, n); r = c[0]; g = c[1]; b = c[2]; }
   else if (mm.tex) {
     const w = 1 - u - v;
@@ -110,14 +114,17 @@ export function renderHD(prims: Prim[], meshes: MeshInst[], o: HDOpts): { img: I
     W = Math.ceil(bx1 - bx0) + 7; H = Math.ceil(by1 - by0) + 7;
   }
   const Y0 = ymax + 2;
-  const VIEW: V3 = norm([-1, -2 * CAM.KD / CAM.KV, -1]);
+  const yaw = o.yaw ?? 0;
+  const rY = (v: V3, a: number): V3 => { const c = Math.cos(a), sn = Math.sin(a); return [v[0] * c + v[2] * sn, v[1], -v[0] * sn + v[2] * c]; };
+  const VIEW: V3 = rY(norm([-1, -2 * CAM.KD / CAM.KV, -1]), -yaw);
+  const SUNm: V3 = rY(SUN, -yaw);
   const tests = meshes.map(alphaOK);
 
   // ---- aceleração: grade em espaço de tela (raios primários) e no espaço da luz (sombras)
   const CELL = 12;
   const sgrid = new Map<number, Prim[]>();
-  const LU = norm([SUN[2], 0, -SUN[0]]);
-  const LV = norm([SUN[1] * LU[2] - SUN[2] * LU[1], SUN[2] * LU[0] - SUN[0] * LU[2], SUN[0] * LU[1] - SUN[1] * LU[0]]);
+  const LU = norm([SUNm[2], 0, -SUNm[0]]);
+  const LV = norm([SUNm[1] * LU[2] - SUNm[2] * LU[1], SUNm[2] * LU[0] - SUNm[0] * LU[2], SUNm[0] * LU[1] - SUNm[1] * LU[0]]);
   const LC = 0.35;
   const lgrid = new Map<number, Prim[]>();
   const lkey = (q: V3) => (Math.floor(dot(q, LV) / LC) + 4096) * 8192 + Math.floor(dot(q, LU) / LC) + 4096;
@@ -161,12 +168,12 @@ export function renderHD(prims: Prim[], meshes: MeshInst[], o: HDOpts): { img: I
   };
   const occluded = (p: V3): boolean => {
     for (const pr of lgrid.get(lkey(p)) ?? []) {
-      if (!pr.cast || pr.quickReject(p, SUN)) continue;
-      if (pr.hit(p, SUN)) return true;
+      if (!pr.cast || pr.quickReject(p, SUNm)) continue;
+      if (pr.hit(p, SUNm)) return true;
     }
     for (let i = 0; i < meshes.length; i++) {
       if (meshes[i].cast === false) continue;
-      if (meshes[i].bvh.intersect(p, SUN, tests[i], true)) return true;
+      if (meshes[i].bvh.intersect(p, SUNm, tests[i], true)) return true;
     }
     return false;
   };
@@ -181,14 +188,14 @@ export function renderHD(prims: Prim[], meshes: MeshInst[], o: HDOpts): { img: I
     for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
       const fx = px + (sx + 0.5) / SS - OX, fy = py + (sy + 0.5) / SS - OY;
       const a = fx / (16 * K), b = (fy + Y0 * CAM.KV * K) / (CAM.KD * K);
-      const orig: V3 = [(a + b) / 2, Y0, (b - a) / 2];
+      const orig: V3 = rY([(a + b) / 2, Y0, (b - a) / 2], -yaw);
       curPrims = sgrid.get(Math.floor(py / CELL) * 4096 + Math.floor(px / CELL)) ?? [];
       const r = trace(orig);
       if (r) {
         const p = add(orig, mul(VIEW, r.t));
         let n = r.n;
         if (dot(n, VIEW) > 0) n = mul(n, -1);
-        let lam = Math.max(0, dot(n, SUN));
+        let lam = Math.max(0, dot(n, SUNm));
         if (lam > 0 && occluded(add(p, mul(n, 0.015)))) lam = 0;
         const L = Math.min(1, amb + (1 - amb) * lam + 0.08 * Math.max(0, n[1]));
         let c: RGB;
@@ -232,7 +239,7 @@ export function renderHD(prims: Prim[], meshes: MeshInst[], o: HDOpts): { img: I
         if (emissive) e++;
       } else if (o.shadow) {
         const a = fx / (16 * K), b = (fy + Y0 * CAM.KV * K) / (CAM.KD * K);
-        const orig: V3 = [(a + b) / 2, Y0, (b - a) / 2];
+        const orig: V3 = rY([(a + b) / 2, Y0, (b - a) / 2], -yaw);
         const t = -orig[1] / VIEW[1];
         const g = add(orig, mul(VIEW, t));
         if (occluded(add(g, [0, 0.002, 0]))) sh++;

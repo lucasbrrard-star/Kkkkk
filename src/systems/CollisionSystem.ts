@@ -10,7 +10,7 @@ export class CollisionSystem {
   private cell = 4;
   dynamic: DynCollider[] = [];
 
-  constructor(private colliders: Collider[], private terrain: Uint8Array) {
+  constructor(private colliders: Collider[], private terrain: Uint8Array, private walkable: { x0: number; y0: number; x1: number; y1: number }[] = []) {
     for (const c of colliders) {
       const [x0, y0, x1, y1] = c.kind === 'rect' ? [c.x0, c.y0, c.x1, c.y1] : [c.x - c.r, c.y - c.r, c.x + c.r, c.y + c.r];
       for (let gy = Math.floor(y0 / this.cell); gy <= Math.floor(y1 / this.cell); gy++)
@@ -24,7 +24,10 @@ export class CollisionSystem {
 
   blockedTile(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= N || ty >= N) return true;
-    return this.terrain[ty * N + tx] === T.Water;
+    if (this.terrain[ty * N + tx] !== T.Water) return false;
+    // áreas caminháveis sobre a água (píer)
+    for (const w of this.walkable) if (tx + 0.5 >= w.x0 && tx + 0.5 <= w.x1 && ty + 0.5 >= w.y0 && ty + 0.5 <= w.y1) return false;
+    return true;
   }
 
   private near(x: number, y: number): Collider[] {
