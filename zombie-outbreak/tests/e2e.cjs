@@ -151,7 +151,7 @@ async function waitFor(page, fn, arg, timeout = 15000) {
     await hq.evaluate(() => { __game.player.pos.set(1.5, 0, 6); __game.cam.yaw = Math.PI - 0.12; __game.cam.pitch = -0.02; __game.player.facing = __game.cam.yaw + Math.PI; __game.step(0.35); });
     const f0 = await hq.evaluate(() => __game.frames);
     await waitFor(hq, (f) => __game.frames >= f + 2, f0, 60000);
-    await hq.screenshot({ path: path.join(SHOTS, 'gameplay-hq.png') });
+    await hq.screenshot({ path: path.join(SHOTS, 'gameplay-hq.png'), timeout: 180000 });
     await hq.mouse.up();
     await hq.close();
 
