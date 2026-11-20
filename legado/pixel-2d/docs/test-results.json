@@ -1,0 +1,157 @@
+[
+  {
+    "name": "Jogo inicia e o mapa carrega (tilemap em camadas)",
+    "ok": true,
+    "info": "solo, areia, agua, espuma, ruas, calcadas · 4524 tiles · 113 objetos"
+  },
+  {
+    "name": "Personagem aparece",
+    "ok": true,
+    "info": ""
+  },
+  {
+    "name": "Caminhada (teclado D)",
+    "ok": true,
+    "info": "anim=walk desloc=1.47 dir=2"
+  },
+  {
+    "name": "Corrida (Shift)",
+    "ok": true,
+    "info": "anim=run vel=3.39 tiles/s"
+  },
+  {
+    "name": "Parar → idle",
+    "ok": true,
+    "info": "state=idle"
+  },
+  {
+    "name": "Câmera acompanha o personagem",
+    "ok": true,
+    "info": "distância ao centro=16.1px"
+  },
+  {
+    "name": "Pulo (Espaço) com altura visual separada",
+    "ok": true,
+    "info": "altura máx=0.81 · quadros de pulo vistos=0,1,2,3,4"
+  },
+  {
+    "name": "Aterrissa e volta ao chão",
+    "ok": true,
+    "info": "z=0 state=idle"
+  },
+  {
+    "name": "Colisão com casa (não atravessa parede)",
+    "ok": true,
+    "info": "y=38.30 (parede em 38.00)"
+  },
+  {
+    "name": "Colisão com o mar / limites",
+    "ok": true,
+    "info": "pos=(53.7, 30.0)"
+  },
+  {
+    "name": "Pulo sobre obstáculo baixo (banco, correndo)",
+    "ok": true,
+    "info": "bloqueia no chão=true · livre a 0,6 m=true · pos=(30.59, 19.60)"
+  },
+  {
+    "name": "Interação com terreno vazio",
+    "ok": true,
+    "info": "foco=lot1"
+  },
+  {
+    "name": "Interação com casa",
+    "ok": true,
+    "info": "foco=casa1"
+  },
+  {
+    "name": "Ponto de ônibus (nome + painel informativo)",
+    "ok": true,
+    "info": "foco=ponto"
+  },
+  {
+    "name": "NPC fala ao interagir",
+    "ok": true,
+    "info": "Boa tarde! O"
+  },
+  {
+    "name": "Ônibus circula pela rota",
+    "ok": true,
+    "info": "s: 79.7 → 85.3"
+  },
+  {
+    "name": "Esc abre o menu de pausa",
+    "ok": true,
+    "info": ""
+  },
+  {
+    "name": "Digitar no campo de texto não move o personagem",
+    "ok": true,
+    "info": "nome=\"Lucas WASD\""
+  },
+  {
+    "name": "Menu: Configurações, Controles e Reiniciar funcionam",
+    "ok": true,
+    "info": "pos após reiniciar=(46.8, 24.2)"
+  },
+  {
+    "name": "Continuar fecha o menu",
+    "ok": true,
+    "info": ""
+  },
+  {
+    "name": "FPS medido (renderização por software, headless)",
+    "ok": true,
+    "info": "17 FPS"
+  },
+  {
+    "name": "Sem erros críticos no console (desktop)",
+    "ok": true,
+    "info": ""
+  },
+  {
+    "name": "Controles de toque visíveis no celular",
+    "ok": true,
+    "info": ""
+  },
+  {
+    "name": "Joystick responde ao toque (movimento proporcional)",
+    "ok": true,
+    "info": "vel=0.99 anim=walk desloc=1.57"
+  },
+  {
+    "name": "Multitoque: joystick + botão Correr",
+    "ok": true,
+    "info": "vel=3.75 anim=run"
+  },
+  {
+    "name": "Joystick retorna ao centro ao soltar",
+    "ok": true,
+    "info": "transform=matrix(1, 0, 0, 1, 0, 0)"
+  },
+  {
+    "name": "Botão Pular funciona",
+    "ok": true,
+    "info": "altura máx=0.68"
+  },
+  {
+    "name": "Botão Interagir habilita perto de objeto e abre painel",
+    "ok": true,
+    "info": ""
+  },
+  {
+    "name": "Botão de configurações abre o menu (toque)",
+    "ok": true,
+    "info": ""
+  },
+  {
+    "name": "Interface ocupa pouco da tela",
+    "ok": true,
+    "info": "20.6% da tela"
+  },
+  {
+    "name": "Sem erros críticos no console (celular)",
+    "ok": true,
+    "info": ""
+  }
+]

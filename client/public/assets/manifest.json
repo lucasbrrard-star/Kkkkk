@@ -1,0 +1,480 @@
+{
+ "models": {
+  "bench": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -0.95,
+     0,
+     -0.435
+    ],
+    "max": [
+     0.95,
+     1.122,
+     0.435
+    ]
+   },
+   "tris": 1666,
+   "bytes": 47588
+  },
+  "lamp": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -0.282,
+     0,
+     -0.27
+    ],
+    "max": [
+     0.282,
+     4.4,
+     0.27
+    ]
+   },
+   "tris": 1399,
+   "bytes": 37820
+  },
+  "fountain": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -3.495,
+     0,
+     -3.5
+    ],
+    "max": [
+     3.495,
+     4.511,
+     3.5
+    ]
+   },
+   "tris": 3178,
+   "bytes": 188812
+  },
+  "statue": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -0.41,
+     0,
+     -0.441
+    ],
+    "max": [
+     0.41,
+     2.4,
+     0.441
+    ]
+   },
+   "tris": 3500,
+   "bytes": 72724
+  },
+  "busstop": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -0.999,
+     0,
+     -2.1
+    ],
+    "max": [
+     0.999,
+     1.846,
+     2.1
+    ]
+   },
+   "tris": 2595,
+   "bytes": 46444
+  },
+  "planter": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -1.1,
+     0,
+     -0.395
+    ],
+    "max": [
+     1.1,
+     0.772,
+     0.395
+    ]
+   },
+   "tris": 1500,
+   "bytes": 107084
+  },
+  "lounger": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -0.4,
+     0,
+     -1
+    ],
+    "max": [
+     0.4,
+     0.707,
+     1
+    ]
+   },
+   "tris": 794,
+   "bytes": 15112
+  },
+  "palm": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.029,
+     0,
+     -2.07
+    ],
+    "max": [
+     2.029,
+     7.8,
+     2.07
+    ]
+   },
+   "tris": 5942,
+   "bytes": 347020
+  },
+  "tree_ipe": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.799,
+     0,
+     -2.971
+    ],
+    "max": [
+     2.799,
+     7,
+     2.971
+    ]
+   },
+   "tris": 13991,
+   "bytes": 311968
+  },
+  "tree_gold": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.599,
+     0,
+     -2.759
+    ],
+    "max": [
+     2.599,
+     6.5,
+     2.759
+    ]
+   },
+   "tris": 13991,
+   "bytes": 311104
+  },
+  "apartment": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -9.004,
+     0,
+     -7.747
+    ],
+    "max": [
+     9.004,
+     14,
+     7.747
+    ]
+   },
+   "tris": 20939,
+   "bytes": 1779600
+  },
+  "colonial_a": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -5.841,
+     0,
+     -6.104
+    ],
+    "max": [
+     5.841,
+     9.5,
+     6.104
+    ]
+   },
+   "tris": 14941,
+   "bytes": 599884
+  },
+  "colonial_b": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -5.748,
+     0,
+     -4.578
+    ],
+    "max": [
+     5.748,
+     12,
+     4.578
+    ]
+   },
+   "tris": 19938,
+   "bytes": 1807776
+  },
+  "shoprow": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -17,
+     0,
+     -10.82
+    ],
+    "max": [
+     17,
+     9.285,
+     10.82
+    ]
+   },
+   "tris": 5372,
+   "bytes": 342768
+  },
+  "modern": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -11,
+     0,
+     -5.255
+    ],
+    "max": [
+     11,
+     6.007,
+     5.255
+    ]
+   },
+   "tris": 22851,
+   "bytes": 2612472
+  },
+  "tower_a": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -12.509,
+     0,
+     -8.46
+    ],
+    "max": [
+     12.509,
+     46,
+     8.46
+    ]
+   },
+   "tris": 16376,
+   "bytes": 367996
+  },
+  "tower_b": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -8.598,
+     0,
+     -7.739
+    ],
+    "max": [
+     8.598,
+     58,
+     7.739
+    ]
+   },
+   "tris": 16937,
+   "bytes": 352264
+  },
+  "tower_c": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -9.063,
+     0,
+     -9.968
+    ],
+    "max": [
+     9.063,
+     52,
+     9.968
+    ]
+   },
+   "tris": 21609,
+   "bytes": 545120
+  },
+  "store": {
+   "category": "building",
+   "bounds": {
+    "min": [
+     -6,
+     0,
+     -4.49
+    ],
+    "max": [
+     6,
+     8.695,
+     4.49
+    ]
+   },
+   "tris": 4664,
+   "bytes": 580900
+  },
+  "avatar_m": {
+   "category": "avatar",
+   "bounds": {
+    "min": [
+     -0.3,
+     0,
+     -0.3
+    ],
+    "max": [
+     0.3,
+     1.82,
+     0.3
+    ]
+   },
+   "tris": 27698,
+   "bytes": 2849256
+  },
+  "avatar_f": {
+   "category": "avatar",
+   "bounds": {
+    "min": [
+     -0.3,
+     0,
+     -0.3
+    ],
+    "max": [
+     0.3,
+     1.721,
+     0.3
+    ]
+   },
+   "tris": 28106,
+   "bytes": 1728052
+  },
+  "lamp_far": {
+   "category": "prop",
+   "bounds": {
+    "min": [
+     -0.282,
+     0,
+     -0.27
+    ],
+    "max": [
+     0.282,
+     4.4,
+     0.27
+    ]
+   },
+   "tris": 324,
+   "bytes": 15852
+  },
+  "tree_ipe_far": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.799,
+     0,
+     -2.971
+    ],
+    "max": [
+     2.799,
+     7,
+     2.971
+    ]
+   },
+   "tris": 1266,
+   "bytes": 45232
+  },
+  "tree_gold_far": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.599,
+     0,
+     -2.759
+    ],
+    "max": [
+     2.599,
+     6.5,
+     2.759
+    ]
+   },
+   "tris": 1266,
+   "bytes": 45068
+  },
+  "palm_far": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.029,
+     0,
+     -2.07
+    ],
+    "max": [
+     2.029,
+     7.8,
+     2.07
+    ]
+   },
+   "tris": 1227,
+   "bytes": 97912
+  },
+  "tree_leafy": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.998,
+     0,
+     -3.183
+    ],
+    "max": [
+     2.998,
+     7.5,
+     3.183
+    ]
+   },
+   "tris": 13991,
+   "bytes": 309848
+  },
+  "tree_leafy_far": {
+   "category": "tree",
+   "bounds": {
+    "min": [
+     -2.998,
+     0,
+     -3.183
+    ],
+    "max": [
+     2.998,
+     7.5,
+     3.183
+    ]
+   },
+   "tris": 1266,
+   "bytes": 44424
+  }
+ },
+ "textures": [
+  "asphalt",
+  "pavers",
+  "grass",
+  "sand",
+  "plaza",
+  "concrete"
+ ],
+ "clips": [
+  "idle",
+  "walk",
+  "run",
+  "agree",
+  "headShake",
+  "idle2",
+  "dance"
+ ]
+}
