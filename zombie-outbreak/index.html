@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>Zombie Outbreak</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070a; color: #e8e4dc;
+    font-family: 'Trebuchet MS', 'Segoe UI', Roboto, Arial, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+  canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+  .hidden { display: none !important; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%); }
+  #damage { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(120,0,0,0) 40%, rgba(170,0,0,0.75) 100%); opacity: 0; transition: opacity .15s; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  #crosshair i { position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 2px #000; transition: transform .08s; }
+  #crosshair .t, #crosshair .b { width: 2px; height: 9px; left: -1px; }
+  #crosshair .l, #crosshair .r { height: 2px; width: 9px; top: -1px; }
+  #crosshair .t { top: -15px; } #crosshair .b { top: 6px; } #crosshair .l { left: -15px; } #crosshair .r { left: 6px; }
+  #crosshair .dot { width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; }
+  #hitmarker { position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; opacity: 0; }
+  #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 11px; top: -2px; width: 2px; height: 28px; background: #fff; transform: rotate(45deg); box-shadow: 0 0 3px #f00; }
+  #hitmarker::after { transform: rotate(-45deg); }
+  #hitmarker.kill::before, #hitmarker.kill::after { background: #ff3b2f; }
+  #stats { position: absolute; left: 22px; top: 18px; width: 260px; }
+  .label { font-size: 11px; letter-spacing: 3px; opacity: .75; margin-bottom: 4px; }
+  #hpbar { height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.25); transform: skewX(-18deg); overflow: hidden; }
+  #hpfill { height: 100%; width: 100%; background: linear-gradient(90deg, #7a0d0d, #d8312a); transition: width .2s; }
+  #hptext { font-size: 13px; margin-top: 3px; opacity: .8; }
+  #topright { position: absolute; right: 22px; top: 16px; text-align: right; text-shadow: 0 2px 6px #000; }
+  #kills { font-size: 26px; font-weight: bold; letter-spacing: 1px; }
+  #wave { font-size: 13px; letter-spacing: 3px; color: #e0b050; }
+  #alive { font-size: 12px; opacity: .7; }
+  #ammo { position: absolute; right: 26px; bottom: 22px; text-align: right; text-shadow: 0 2px 6px #000; }
+  #mag { font-size: 46px; font-weight: bold; } #mag.low { color: #ff5040; }
+  #ammo .sep { font-size: 26px; opacity: .5; margin: 0 6px; } #reserve { font-size: 22px; opacity: .8; }
+  #weapon { font-size: 11px; letter-spacing: 3px; opacity: .6; }
+  #reloadbar { height: 4px; width: 150px; margin-left: auto; margin-top: 4px; background: rgba(255,255,255,.15); }
+  #reloadbar div { height: 100%; width: 0; background: #e0b050; }
+  #banner { position: absolute; left: 0; right: 0; top: 26%; text-align: center; font-size: 44px; letter-spacing: 10px; font-weight: bold; color: #d8312a; text-shadow: 0 0 25px rgba(200,0,0,.6), 0 3px 8px #000; opacity: 0; transition: opacity .5s; }
+  #banner small { display: block; font-size: 14px; letter-spacing: 5px; color: #ddd; margin-top: 8px; }
+  #msg { position: absolute; left: 0; right: 0; bottom: 18%; text-align: center; font-size: 15px; letter-spacing: 2px; text-shadow: 0 2px 4px #000; opacity: .9; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(ellipse at center, rgba(20,8,8,.55), rgba(0,0,0,.92)); z-index: 10; padding: 20px; }
+  .screen h1 { font-size: clamp(38px, 8vw, 86px); margin: 0; letter-spacing: 8px; color: #d8312a; text-shadow: 0 0 40px rgba(220,0,0,.5), 0 4px 0 #300; line-height: 1; }
+  .screen h2 { font-size: clamp(14px, 2vw, 18px); letter-spacing: 8px; margin: 10px 0 24px; opacity: .8; font-weight: normal; }
+  .btn { pointer-events: auto; background: #b8231c; color: #fff; border: 0; padding: 14px 44px; font-size: 18px; letter-spacing: 4px; font-weight: bold; cursor: pointer;
+    clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%); margin: 6px; font-family: inherit; }
+  .btn:hover { background: #e0342a; } .btn.alt { background: #333; }
+  .controls { margin-top: 26px; font-size: 13px; line-height: 1.9; opacity: .75; max-width: 640px; }
+  .controls b { display: inline-block; min-width: 26px; padding: 0 6px; border: 1px solid rgba(255,255,255,.35); border-radius: 3px; margin: 0 2px; font-weight: normal; }
+  #goStats { font-size: 18px; margin-bottom: 20px; line-height: 1.7; }
+  /* touch controls */
+  #touch { position: fixed; inset: 0; z-index: 5; }
+  #lookZone { position: absolute; right: 0; top: 0; width: 58%; height: 100%; }
+  #moveZone { position: absolute; left: 0; top: 0; width: 42%; height: 100%; }
+  #stick { position: absolute; width: 130px; height: 130px; margin: -65px 0 0 -65px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); background: rgba(0,0,0,.25); left: 110px; top: calc(100% - 120px); pointer-events: none; }
+  #knob { position: absolute; left: 40px; top: 40px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.4); }
+  .tb { position: absolute; border-radius: 50%; background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.35); color: #fff; font: bold 12px inherit; letter-spacing: 1px;
+    display: flex; align-items: center; justify-content: center; touch-action: none; }
+  .tb.on { background: rgba(216,49,42,.55); border-color: #ff6a50; }
+  #bFire { right: 34px; bottom: 60px; width: 92px; height: 92px; background: rgba(184,35,28,.5); font-size: 14px; }
+  #bAim { right: 140px; bottom: 36px; width: 62px; height: 62px; }
+  #bReload { right: 40px; bottom: 166px; width: 56px; height: 56px; }
+  #bJump { right: 134px; bottom: 112px; width: 56px; height: 56px; }
+  #bRun { left: 34px; bottom: 210px; width: 60px; height: 60px; }
+  #bPause { right: 50%; top: 10px; width: 44px; height: 44px; margin-right: -22px; }
+  #rotate { position: fixed; inset: 0; z-index: 30; background: #000; display: none; align-items: center; justify-content: center; text-align: center; font-size: 20px; padding: 30px; }
+  @media (orientation: portrait) { body.touch #rotate { display: flex; } }
+  @media (max-height: 500px) { #stats { width: 180px; left: 14px; top: 10px; } #kills { font-size: 20px; } #mag { font-size: 34px; } #ammo { bottom: auto; top: 70px; right: 22px; } }
+</style>
+</head>
+<body>
+<div id="hud" class="hidden">
+  <div id="vignette"></div>
+  <div id="damage"></div>
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i><div id="hitmarker"></div></div>
+  <div id="stats"><div class="label">VIDA</div><div id="hpbar"><div id="hpfill"></div></div><div id="hptext">100 / 100</div></div>
+  <div id="topright"><div id="kills">☠ 0</div><div id="wave">ONDA 1</div><div id="alive"></div></div>
+  <div id="ammo"><div id="weapon">FUZIL M4</div><span id="mag">30</span><span class="sep">/</span><span id="reserve">120</span><div id="reloadbar"><div></div></div></div>
+  <div id="banner"></div>
+  <div id="msg"></div>
+</div>
+<div id="touch" class="hidden">
+  <div id="moveZone"></div>
+  <div id="lookZone"></div>
+  <div id="stick"><div id="knob"></div></div>
+  <div class="tb" id="bFire">FOGO</div>
+  <div class="tb" id="bAim">MIRA</div>
+  <div class="tb" id="bReload">R</div>
+  <div class="tb" id="bJump">PULO</div>
+  <div class="tb" id="bRun">CORRER</div>
+  <div class="tb" id="bPause">II</div>
+</div>
+<div id="menu" class="screen">
+  <h1>ZOMBIE<br/>OUTBREAK</h1>
+  <h2>SOBREVIVA À NOITE</h2>
+  <button class="btn" id="playBtn">JOGAR</button>
+  <div class="controls" id="ctrlDesk">
+    <b>W</b><b>A</b><b>S</b><b>D</b> mover &nbsp; <b>Shift</b> correr &nbsp; <b>Espaço</b> pular &nbsp; <b>Mouse</b> câmera<br/>
+    <b>Clique esq.</b> atirar &nbsp; <b>Clique dir.</b> mirar &nbsp; <b>R</b> recarregar &nbsp; <b>Esc</b> pausar
+  </div>
+  <div class="controls hidden" id="ctrlTouch">Analógico à esquerda · arraste à direita para a câmera · botões FOGO, MIRA, R, PULO e CORRER</div>
+</div>
+<div id="pause" class="screen hidden">
+  <h1>PAUSADO</h1><h2>&nbsp;</h2>
+  <button class="btn" id="resumeBtn">CONTINUAR</button>
+  <button class="btn alt" id="restartBtn2">REINICIAR</button>
+</div>
+<div id="gameover" class="screen hidden">
+  <h1>VOCÊ MORREU</h1><h2>A CIDADE CAIU</h2>
+  <div id="goStats"></div>
+  <button class="btn" id="restartBtn">REINICIAR</button>
+</div>
+<div id="rotate">↻<br/>Gire o dispositivo para o modo horizontal</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
