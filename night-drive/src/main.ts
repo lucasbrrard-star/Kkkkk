@@ -44,7 +44,7 @@ async function boot() {
   };
   game.events.onImpact = (speed) => { ui.impact(speed / 15); audio.impact(speed); };
   game.events.onFrame = (g, dt) => { ui.update(); audio.update(g, dt); };
-  ui.onPlay = () => { audio.start(); game.start(); };
+  ui.onPlay = () => { audio.start(); game.start(); game.renderer.domElement.focus(); };
   ui.onPaint = (i) => game.car?.setPaint(i);
   ui.onVolume = (v) => audio.setVolume(v);
   ui.onQuality = (q) => {

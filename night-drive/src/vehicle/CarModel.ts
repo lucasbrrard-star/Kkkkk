@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 export interface WheelRig {
   name: string;
@@ -195,11 +194,28 @@ export class CarModel {
   static async load(url: string, infoUrl: string, onProgress?: (p: number) => void): Promise<CarModel> {
     try {
       const loader = new GLTFLoader();
-      loader.setMeshoptDecoder(MeshoptDecoder);
-      const [gltf, info] = await Promise.all([
-        loader.loadAsync(url, (e) => { if (e.total) onProgress?.(e.loaded / e.total); }),
+      const fileLoader = new THREE.FileLoader();
+      fileLoader.setResponseType('arraybuffer');
+      // Hosts that refuse .glb get the same bytes as base64 inside a JSON file ({ "glb": "..." }).
+      const loadBytes = url.endsWith('.json')
+        ? fetch(url).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((j: { glb: string }) => {
+          const bin = atob(j.glb);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          return bytes.buffer;
+        })
+        : (fileLoader.loadAsync(url, (e) => { if (e.total) onProgress?.(e.loaded / e.total); }) as Promise<ArrayBuffer>);
+      const [buffer, info] = await Promise.all([
+        loadBytes,
         fetch(infoUrl).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
       ]);
+      // The meshopt decoder (WebAssembly) is only loaded when the file is actually compressed with it.
+      const head = new TextDecoder().decode(new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 65536)));
+      if (head.includes('EXT_meshopt_compression')) {
+        const { MeshoptDecoder } = await import('three/examples/jsm/libs/meshopt_decoder.module.js');
+        loader.setMeshoptDecoder(MeshoptDecoder);
+      }
+      const gltf = await loader.parseAsync(buffer, url.substring(0, url.lastIndexOf('/') + 1));
       return new CarModel(gltf.scene, info);
     } catch (err) {
       console.warn('[car] GLB failed to load, using procedural fallback', err);

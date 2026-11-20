@@ -97,7 +97,7 @@ export class Game {
 
     onProgress(0.6, 'Carregando o carro');
     const base = import.meta.env.BASE_URL;
-    this.car = await CarModel.load(`${base}models/car.glb`, `${base}models/car.json`, (p) => onProgress(0.6 + p * 0.3, 'Carregando o carro'));
+    this.car = await CarModel.load(`${base}${import.meta.env.VITE_CAR_URL ?? 'models/car.glb'}`, `${base}models/car.json`, (p) => onProgress(0.6 + p * 0.3, 'Carregando o carro'));
     this.scene.add(this.car.root);
     this.resetCar();
 

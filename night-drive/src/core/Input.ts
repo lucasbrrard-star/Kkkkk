@@ -59,7 +59,8 @@ export class Input {
     let throttle = up ? 1 : 0, brake = dn ? 1 : 0, steer = this.kbSteer, hand = this.down('Space');
 
     // gamepad (standard mapping): RT throttle, LT brake, left stick steer, A/B handbrake
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let pads: (Gamepad | null)[] = [];
+    try { pads = navigator.getGamepads ? navigator.getGamepads() : []; } catch { pads = []; } // blocked in some iframes
     for (const p of pads) {
       if (!p || !p.connected) continue;
       const lx = Math.abs(p.axes[0]) > 0.12 ? p.axes[0] : 0;
