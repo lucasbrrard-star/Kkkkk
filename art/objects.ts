@@ -2,6 +2,7 @@
 // renderizados como sprites isométricos com sombra projetada separada.
 
 import { RGB, hex, mix, ramp } from './color';
+import { renderHD } from './hd';
 import { hash3, vnoise3, hash2 } from './noise';
 import {
   Box, Capsule, Cylinder, Ellipsoid, Image, Material, OBox, Prim, ShadeCtx, Sphere, V3, add, gableRoof, hipRoof,
@@ -113,8 +114,9 @@ function flat(r: RGB[], seed = 0): Material { return mat(r, (c) => grit(c.p, see
 /** Escala única de todos os objetos do mundo (1 unidade do modelo = OBJ_SCALE tiles). */
 export const OBJ_SCALE = 1.4;
 
-function rs(prims: Prim[], shadow = true, opts: Partial<Parameters<typeof render>[1]> = {}): Sprite {
-  const res = render(prims, { shadow, outline: true, innerLines: true, scale: OBJ_SCALE, innerDark: 1, ...opts });
+function rs(prims: Prim[], shadow = true, opts: { ambient?: number } = {}): Sprite {
+  // pipeline HD (luz de fim de tarde, paleta reduzida); 1 unidade do modelo = OBJ_SCALE tiles de 64×32
+  const res = renderHD(prims, [], { scale: 2 * OBJ_SCALE, ss: 3, shadow, colors: 32, ambient: opts.ambient });
   const img = trim(res.img);
   const sh = res.shadow ? trim(res.shadow) : undefined;
   return { img, shadow: sh };

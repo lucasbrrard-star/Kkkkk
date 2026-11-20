@@ -1,0 +1,23 @@
+[
+ ["palm_a", "palm tree", "f9c65ca8"],
+ ["palm_b", "palm tree", "b549671d"],
+ ["palm_c", "palm tree", "f755592f"],
+ ["flowers_pink", "flower bush", "6a21dd58"],
+ ["flowers_bush", "flower bush", "d07d9acb"],
+ ["lamp_double", "street lamp", "5eef57a2"],
+ ["lamp_single", "street lamp", "c65a81d5"],
+ ["bench", "park bench", "0e35aec5"],
+ ["fountain", "fountain", "8c47c7c1"],
+ ["lighthouse", "lighthouse", "432b2f07"],
+ ["sailboat", "sailboat", "b829e72b"],
+ ["busstop", "city bus", "ecbd44e3"],
+ ["umbrella", "beach umbrella", "9c5eedc2"],
+ ["lounger", "sun lounger", "cf4de778"],
+ ["tree_blue", "blossom tree", "a9e48b46"],
+ ["tree_gold", "blossom tree", "1e40b507"],
+ ["tree_pink", "blossom tree", "1571ed44"],
+ ["house_villa", "house", "264b47f4"],
+ ["house_suburb", "house", "ff0ef759"],
+ ["house_bungalow", "villa", "a0cd79e6"],
+ ["house_pool", "villa", "9966b0a9"]
+]

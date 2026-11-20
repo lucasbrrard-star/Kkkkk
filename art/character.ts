@@ -14,10 +14,11 @@ export const DIR_VEC: Record<string, [number, number]> = {
   S: [R2, R2], SE: [1, 0], E: [R2, -R2], NE: [0, -1], N: [-R2, -R2], NW: [-1, 0], W: [-R2, R2], SW: [0, 1],
 };
 
-export const FRAME_W = 56;
-export const FRAME_H = 72;
-export const ANCHOR_X = 28;
-export const ANCHOR_Y = 65;
+export const CHAR_K = 1.3;      // escala de render (pixel art HD)
+export const FRAME_W = 72;
+export const FRAME_H = 92;
+export const ANCHOR_X = 36;
+export const ANCHOR_Y = 84;
 
 export interface Look {
   skin: string; hair: string; eyes: string;
@@ -25,7 +26,8 @@ export interface Look {
   bottom: 'jeans' | 'shorts'; bottomColor: string;
   shoe: string; shoeTrim: string;
   backpack?: string; hat?: 'straw' | 'cap'; hatColor?: string;
-  hair2?: 'messy' | 'long' | 'short';
+  hair2?: 'messy' | 'long' | 'short' | 'curly' | 'bun' | 'ponytail';
+  capColor?: string; shortsTop?: boolean; name?: string;
   mustache?: boolean;
   build?: number;
 }
@@ -37,6 +39,13 @@ export const PLAYER_LOOK: Look = {
   shoe: '#d3303a', shoeTrim: '#f5f3ef',
   backpack: '#2b2c33', hair2: 'messy',
 };
+
+export const NPC_LOOKS: Look[] = [
+  { name: 'lia', skin: '#d79a72', hair: '#2a1712', eyes: '#3a2116', top: 'tee', topColor: '#d93a3a', bottom: 'shorts', bottomColor: '#2b2c36', shoe: '#e9e6e0', shoeTrim: '#d33a32', hat: 'cap', hatColor: '#d33a32', hair2: 'ponytail' },
+  { name: 'rafa', skin: '#b97a55', hair: '#1d1410', eyes: '#2a1a12', top: 'tank', topColor: '#262830', bottom: 'jeans', bottomColor: '#5a7fb5', shoe: '#2b2c33', shoeTrim: '#f2f0ea', hat: 'cap', hatColor: '#f2f0ea', hair2: 'short', mustache: true },
+  { name: 'duda', skin: '#8a5a3c', hair: '#22150f', eyes: '#2a1a12', top: 'tee', topColor: '#f2b632', bottom: 'shorts', bottomColor: '#6b8fc2', shoe: '#f2f0ea', shoeTrim: '#f2b632', hair2: 'curly' },
+  { name: 'cida', skin: '#e8b48c', hair: '#c9c4c0', eyes: '#3a2a20', top: 'tee', topColor: '#8e5bb5', bottom: 'jeans', bottomColor: '#6a4c7c', shoe: '#6b4a3a', shoeTrim: '#e9dcc6', hair2: 'bun' },
+];
 
 export const NPC_LOOK: Look = {
   skin: '#c98e65', hair: '#4a4038', eyes: '#2a1a12',
@@ -186,7 +195,7 @@ export function buildCharacter(L: Look, dirName: string, pose: Pose): { prims: P
   const mHead = mat(skinR, (c) => {
     const l = sub(c.p, headC);
     const f = dot(l, headF) / HR, r = dot(l, Rt) / HR, u = dot(l, headUp) / HR;
-    if (L.hair2 === 'messy' || L.hair2 === 'long') {
+    if (L.hair2 !== 'short') {
       const fringe = 0.4 + 0.1 * Math.abs(Math.sin(r * 7.5 + 0.8));
       if (u > fringe) return hairR;
       if (Math.abs(r) > 0.8 && u > -0.25) return hairR;
@@ -332,7 +341,21 @@ export function buildCharacter(L: Look, dirName: string, pose: Pose): { prims: P
   const hdir = (f: number, r: number, u: number): V3 => norm(add(add(mul(headF, f), mul(Rt, r)), mul(headUp, u)));
   // calota
   prims.push(new Ellipsoid(add(add(headC, mul(headUp, 0.36 * HR)), mul(headF, -0.22 * HR)), [HR * 1.02, HR * 0.8, HR * 0.96], mHair, hb).setGroup(G.hair));
-  if (L.hair2 === 'messy' || L.hair2 === 'long') {
+  if (L.hair2 === 'curly') {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2, uu = 0.2 + (k % 3) * 0.28;
+      const d = hdir(Math.sin(a) * 0.9 - 0.25, Math.cos(a), uu);
+      prims.push(new Sphere(add(headC, mul(d, HR * 0.92)), HR * (0.42 + (k % 2) * 0.08), mHair).setGroup(G.hair));
+    }
+    for (let k = 0; k < 5; k++) prims.push(new Sphere(add(headC, mul(hdir(-0.7, (k - 2) * 0.35, -0.45), HR * 0.95)), HR * 0.42, mHair).setGroup(G.hair));
+  } else if (L.hair2 === 'bun' || L.hair2 === 'ponytail') {
+    prims.push(new Ellipsoid(add(add(headC, mul(headUp, 0.5 * HR)), mul(headF, 0.1 * HR)), [HR * 0.92, HR * 0.42, HR * 0.86], mHair, hb).setGroup(G.hair));
+    if (L.hair2 === 'bun') prims.push(new Sphere(add(add(headC, mul(headUp, 0.75 * HR)), mul(headF, -0.75 * HR)), 0.42 * HR, mHair).setGroup(G.hair));
+    else {
+      const base = add(add(headC, mul(headUp, 0.35 * HR)), mul(headF, -0.95 * HR));
+      prims.push(new Capsule(base, add(add(base, mul(headUp, -1.2 * HR)), mul(headF, -0.35 * HR)), 0.26 * HR, mHair).setGroup(G.hair));
+    }
+  } else if (L.hair2 === 'messy' || L.hair2 === 'long') {
     const spikes: [number, number, number, number][] = [
       [0, 0, 1, 1], [0.35, 0.5, 0.8, 0.9], [0.35, -0.55, 0.78, 0.9], [-0.5, 0.35, 0.8, 1], [-0.55, -0.4, 0.75, 1],
       [-0.95, 0.25, 0.25, 0.95], [-0.95, -0.3, 0.3, 0.95], [-0.75, 0.05, -0.25, 0.85], [0.05, 1, 0.35, 0.8], [0.05, -1, 0.4, 0.8],
@@ -363,6 +386,15 @@ export function buildCharacter(L: Look, dirName: string, pose: Pose): { prims: P
     prims.push(new Ellipsoid(add(brimC, mul(headUp, 0.35 * HR)), [0.95 * HR, 0.55 * HR, 0.95 * HR], hm, hb).setGroup(G.hair));
     prims.push(new Ellipsoid(add(brimC, mul(headUp, 0.12 * HR)), [0.97 * HR, 0.12 * HR, 0.97 * HR], mat(ramp('#a8402f'), () => 0), hb).setGroup(G.hair));
   }
+  if (L.hat === 'cap') {
+    const cr = ramp(L.hatColor ?? '#d33a32', { spread: 0.7 });
+    const cm = mat(cr, (c) => {
+      const l = sub(c.p, headC);
+      return Math.abs(dot(l, Rt)) < 0.05 * HR && dot(l, headF) > 0 ? { ramp: ramp('#f4efe6', { spread: 0.4 }), shift: 0 } : 0;
+    });
+    prims.push(new Ellipsoid(add(add(headC, mul(headUp, 0.3 * HR)), mul(headF, -0.05 * HR)), [HR * 1.06, HR * 0.78, HR * 1.04], cm, hb).setGroup(G.hair));
+    prims.push(new Ellipsoid(add(add(headC, mul(headUp, 0.36 * HR)), mul(headF, 0.95 * HR)), [HR * 0.72, HR * 0.08, HR * 0.6], mat(cr, () => -1), [Rt, headUp, headF]).setGroup(G.hair));
+  }
   return { prims, face: { headC, F: headF, R: Rt, U: headUp, HR, skin: skinR } };
 }
 
@@ -370,7 +402,7 @@ export function buildCharacter(L: Look, dirName: string, pose: Pose): { prims: P
 export const CHAR_ELEVATION = 14;
 
 function px(p: V3): [number, number] {
-  return [Math.floor(ANCHOR_X + (p[0] - p[2]) * 16), Math.floor(ANCHOR_Y + (p[0] + p[2]) * CAM.KD - p[1] * CAM.KV)];
+  return [Math.floor(ANCHOR_X + (p[0] - p[2]) * 16 * CHAR_K), Math.floor(ANCHOR_Y + ((p[0] + p[2]) * CAM.KD - p[1] * CAM.KV) * CHAR_K)];
 }
 
 function paintFace(img: Image, info: { group: Int32Array; ramps: (RGB[] | null)[] }, face: FaceInfo, L: Look) {
@@ -408,14 +440,17 @@ function paintFace(img: Image, info: { group: Int32Array; ramps: (RGB[] | null)[
     const x0 = e.x - (wide ? 1 : 0), y0 = e.y - 2;
     // sobrancelha (expressão determinada: canto interno mais baixo)
     const inner = e.x < (eyes.length === 2 ? (eyes[0].x + eyes[1].x) / 2 : e.x) ? 1 : -1;
-    for (let k = -1; k <= 1; k++) put(e.x + k + (wide ? 0 : 0), y0 - 3 + (k === inner ? 1 : 0), BROW, true);
+    for (let k = -1; k <= (wide ? 2 : 1); k++) put(e.x + k - (wide && inner > 0 ? 1 : 0), y0 - 3 + (k === inner ? 1 : 0), BROW, true);
     if (wide) {
-      // olho 3×5: cílios, íris grande com brilho, pálpebra inferior
-      put(x0 - (inner < 0 ? 0 : 0), y0 - 1, K); put(x0 + 1, y0 - 1, K); put(x0 + 2, y0 - 1, K);
-      put(x0, y0, K); put(x0 + 1, y0, W); put(x0 + 2, y0, IR);
-      put(x0, y0 + 1, IR); put(x0 + 1, y0 + 1, W); put(x0 + 2, y0 + 1, IR);
-      put(x0, y0 + 2, IR); put(x0 + 1, y0 + 2, IR2); put(x0 + 2, y0 + 2, IR2);
-      put(x0, y0 + 3, K); put(x0 + 1, y0 + 3, K); put(x0 + 2, y0 + 3, K);
+      // olho 4×6: cílios, íris grande com brilho duplo, pálpebra inferior
+      const mir = e.x < (eyes.length === 2 ? (eyes[0].x + eyes[1].x) / 2 : e.x);
+      const X = (k: number) => (mir ? x0 + k : x0 + 3 - k);
+      for (let k = 0; k < 4; k++) put(X(k), y0 - 1, K);
+      put(X(0), y0, K); put(X(1), y0, W); put(X(2), y0, W); put(X(3), y0, IR);
+      put(X(0), y0 + 1, K); put(X(1), y0 + 1, W); put(X(2), y0 + 1, IR); put(X(3), y0 + 1, IR);
+      put(X(0), y0 + 2, IR); put(X(1), y0 + 2, IR); put(X(2), y0 + 2, IR2); put(X(3), y0 + 2, IR);
+      put(X(0), y0 + 3, IR); put(X(1), y0 + 3, IR2); put(X(2), y0 + 3, W); put(X(3), y0 + 3, IR2);
+      put(X(1), y0 + 4, K); put(X(2), y0 + 4, K); put(X(3), y0 + 4, K);
     } else {
       put(x0, y0 - 1, K); put(x0 + 1, y0 - 1, K);
       put(x0, y0, W); put(x0 + 1, y0, IR);
@@ -423,13 +458,13 @@ function paintFace(img: Image, info: { group: Int32Array; ramps: (RGB[] | null)[
       put(x0, y0 + 2, IR2); put(x0 + 1, y0 + 2, IR2);
       put(x0, y0 + 3, K); put(x0 + 1, y0 + 3, K);
     }
-    if (e.v > 0.55) { const bx = e.x + (e.x < (eyes.length === 2 ? (eyes[0].x + eyes[1].x) / 2 : 0) ? -1 : 1); put(bx, y0 + 5, BLUSH); put(bx + 1, y0 + 5, BLUSH); }
+    if (e.v > 0.55) { const bx = e.x + (e.x < (eyes.length === 2 ? (eyes[0].x + eyes[1].x) / 2 : 0) ? -1 : 1); put(bx, y0 + 6, BLUSH); put(bx + 1, y0 + 6, BLUSH); }
   }
   const mv = vis(0.8, 0, -0.62);
   if (mv > 0.2 && !L.mustache) {
     const [x, y] = px(at(0.82, 0, -0.62));
     put(x, y, MOUTH);
-    if (mv > 0.55) put(x - 1, y, MOUTH);
+    if (mv > 0.55) { put(x - 1, y, MOUTH); put(x + 1, y - 1, MOUTH); put(x - 2, y - 1, MOUTH); }
   }
   // nariz: sombra de 1px
   const nv = vis(0.95, 0, -0.28);
@@ -444,7 +479,7 @@ export function renderCharacterFrame(L: Look, dir: string, pose: Pose): Image {
   const { prims, face } = buildCharacter(L, dir, pose);
   setCameraElevation(CHAR_ELEVATION);
   const { img } = render(prims, {
-    width: FRAME_W, height: FRAME_H, ox: ANCHOR_X, oy: ANCHOR_Y, outline: true, innerLines: true, selfShadow: true,
+    width: FRAME_W, height: FRAME_H, ox: ANCHOR_X, oy: ANCHOR_Y, outline: true, innerLines: true, selfShadow: true, scale: CHAR_K,
     ambient: 0.45, outlineDark: 0.7, outlineMix: 0.7,
     extraPost: (im, info) => paintFace(im, info, face, L),
   });
