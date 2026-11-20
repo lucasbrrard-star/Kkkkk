@@ -44,7 +44,7 @@ export class PostFX {
     this.composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType, multisampling: msaa });
     this.renderPass = new RenderPass(scene, camera);
     this.composer.addPass(this.renderPass);
-    this.bloom = new BloomEffect({ mipmapBlur: true, luminanceThreshold: 0.95, luminanceSmoothing: 0.35, intensity: 1.05, radius: 0.72, levels: 7 });
+    this.bloom = new BloomEffect({ mipmapBlur: true, luminanceThreshold: 0.95, luminanceSmoothing: 0.35, intensity: 0.9, radius: 0.7, levels: 7 });
     this.grade = new GradeEffect();
     this.ca = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.0006, 0.0004), radialModulation: true, modulationOffset: 0.25 });
     const tone = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });

@@ -27,9 +27,9 @@ export class TouchControls {
     steer.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       steerId = e.pointerId;
-      steer.setPointerCapture(e.pointerId);
       this.activate();
       setSteer(e.clientX);
+      try { steer.setPointerCapture(e.pointerId); } catch { /* capture is optional */ }
     });
     steer.addEventListener('pointermove', (e) => { if (e.pointerId === steerId) setSteer(e.clientX); });
     const endSteer = (e: PointerEvent) => {
@@ -49,7 +49,10 @@ export class TouchControls {
         p.classList.toggle('on', on);
         if (k === 'handbrake') this.input.touch.handbrake = on; else this.input.touch[k] = on ? 1 : 0;
       };
-      p.addEventListener('pointerdown', (e) => { e.preventDefault(); ids.add(e.pointerId); p.setPointerCapture(e.pointerId); this.activate(); set(true); });
+      p.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); ids.add(e.pointerId); this.activate(); set(true);
+        try { p.setPointerCapture(e.pointerId); } catch { /* capture is optional */ }
+      });
       const up = (e: PointerEvent) => { ids.delete(e.pointerId); if (!ids.size) set(false); };
       p.addEventListener('pointerup', up);
       p.addEventListener('pointercancel', up);

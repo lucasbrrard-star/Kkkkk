@@ -97,7 +97,16 @@ export class ChaseCamera {
     this.camera.position.set(this.pos.x + n1 * vib, this.pos.y + n2 * vib, this.pos.z);
     this.camera.lookAt(this.look);
     this.camera.rotateZ(this.lean);
-    if (Math.abs(this.camera.fov - this.fov) > 0.01) { this.camera.fov = this.fov; this.camera.updateProjectionMatrix(); }
+    const f = this.adaptFov(this.fov);
+    if (Math.abs(this.camera.fov - f) > 0.01) { this.camera.fov = f; this.camera.updateProjectionMatrix(); }
+  }
+
+  /** FOVs are tuned for 16:9; narrower aspects widen the vertical FOV to keep the same horizontal view. */
+  adaptFov(vfov: number) {
+    const a = this.camera.aspect, ref = 16 / 9;
+    if (a >= ref) return vfov;
+    const h = 2 * Math.atan(Math.tan((vfov * Math.PI) / 360) * ref / a);
+    return Math.min(88, (h * 180) / Math.PI);
   }
 
   /** Orbiting camera for the title screen / attract mode. */
@@ -106,7 +115,8 @@ export class ChaseCamera {
     const a = this.t * 0.12 + 2.4;
     this.camera.position.set(center.x + Math.sin(a) * radius, center.y + height, center.z + Math.cos(a) * radius);
     this.camera.lookAt(center.x, center.y + 0.7, center.z);
-    if (this.camera.fov !== 42) { this.camera.fov = 42; this.camera.updateProjectionMatrix(); }
+    const of = this.adaptFov(42);
+    if (this.camera.fov !== of) { this.camera.fov = of; this.camera.updateProjectionMatrix(); }
     this.initialized = false;
   }
 }

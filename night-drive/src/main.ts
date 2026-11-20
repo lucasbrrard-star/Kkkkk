@@ -44,7 +44,12 @@ async function boot() {
   };
   game.events.onImpact = (speed) => { ui.impact(speed / 15); audio.impact(speed); };
   game.events.onFrame = (g, dt) => { ui.update(); audio.update(g, dt); };
-  ui.onPlay = () => { audio.start(); game.start(); game.renderer.domElement.focus(); };
+  ui.onPlay = () => {
+    if (matchMedia('(pointer: coarse)').matches) void UI.goLandscape();
+    audio.start(); game.start(); game.renderer.domElement.focus();
+  };
+  for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || (e.target as HTMLElement)?.closest('#touch')) e.preventDefault(); }, { passive: false });
   ui.onPaint = (i) => game.car?.setPaint(i);
   ui.onVolume = (v) => audio.setVolume(v);
   ui.onQuality = (q) => {

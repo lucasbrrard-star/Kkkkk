@@ -10,6 +10,7 @@ import { PlanarReflection, LAYER_NO_REFLECT } from './render/PlanarReflection';
 import { PostFX } from './render/PostFX';
 import { Environment } from './render/Environment';
 import { LightPool } from './render/LightPool';
+import { Traffic } from './traffic/Traffic';
 
 export type GameState = 'loading' | 'title' | 'playing' | 'paused';
 
@@ -32,6 +33,7 @@ export class Game {
   reflection!: PlanarReflection;
   env!: Environment;
   lightPool!: LightPool;
+  traffic!: Traffic;
   state: GameState = 'loading';
   quality: QualityLevel;
   preset: QualityPreset;
@@ -99,6 +101,7 @@ export class Game {
     const base = import.meta.env.BASE_URL;
     this.car = await CarModel.load(`${base}${import.meta.env.VITE_CAR_URL ?? 'models/car.glb'}`, `${base}models/car.json`, (p) => onProgress(0.6 + p * 0.3, 'Carregando o carro'));
     this.scene.add(this.car.root);
+    this.traffic = new Traffic(this.car, this.scene, this.world.collision);
     this.resetCar();
 
     this.post = new PostFX(this.renderer, this.scene, this.chase.camera, this.preset.msaa);
@@ -235,7 +238,9 @@ export class Game {
     this.car.tailLight.getWorldPosition(u.uTailPos.value);
     u.uTailColor.value.copy(this.car.tailLight.color).multiplyScalar(this.car.tailLight.intensity * 0.6);
     u.uCars.value[0].set(x, z, Math.sin(h), Math.cos(h));
-    u.uCarCount.value = 1;
+    if (this.state === 'playing') this.traffic.update(dt, { x, z });
+    this.traffic.cars.forEach((c, i) => { const a = c.dir > 0 ? 0 : Math.PI; u.uCars.value[i + 1].set(c.x, c.z, Math.sin(a), Math.cos(a)); });
+    u.uCarCount.value = 1 + this.traffic.cars.length;
     this.world.update(this.time, dt, this.chase.camera.position, this.carVel);
     this.lightPool.update(this.tmpV.set(x + Math.sin(h) * 6, 0, z + Math.cos(h) * 6));
   }

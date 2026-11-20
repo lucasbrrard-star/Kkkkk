@@ -173,7 +173,7 @@ export class CityLayout {
       const ix = w * r.range(0.12, 0.22), iz = d * r.range(0.12, 0.22);
       bld.setback = { rect: { minX: rect.minX + ix, maxX: rect.maxX - ix, minZ: rect.minZ + iz, maxZ: rect.maxZ - iz }, height: height + r.range(12, 40) };
     }
-    if (height > 35 && r.chance(0.45)) bld.neonEdge = r.pick([0.83, 0.52, 0.92, 0.6, 0.75]);
+    if (height > 30 && r.chance(0.7)) bld.neonEdge = r.pick([0.83, 0.52, 0.92, 0.6, 0.75]);
     this.buildings.push(bld);
     this.colliders.push({ kind: 'box', x: (rect.minX + rect.maxX) / 2, z: (rect.minZ + rect.maxZ) / 2, hx: (rect.maxX - rect.minX) / 2, hz: (rect.maxZ - rect.minZ) / 2, rot: 0, tag: 'building' });
     return bld;

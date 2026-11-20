@@ -50,7 +50,19 @@ export class UI {
     this.buildTitle();
     this.buildHud();
     this.buildPause();
-    root.append(this.loading, this.title, this.hud, this.pauseScr);
+    const rotate = el('div', '', '<div class="ph"></div><div>Gire o celular para o modo horizontal</div><button class="chip btn-fs" data-act="fullscreen">Tela cheia e girar</button>');
+    rotate.id = 'rotate';
+    root.append(this.loading, this.title, this.hud, this.pauseScr, rotate);
+    root.querySelectorAll<HTMLButtonElement>('[data-act=fullscreen]').forEach((b) => { b.onclick = () => UI.goLandscape(); });
+  }
+
+  /** Fullscreen + landscape lock where the browser allows it (Android Chrome); iOS shows the rotate hint. */
+  static async goLandscape() {
+    try {
+      const d = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+      if (!document.fullscreenElement) await (d.requestFullscreen?.({ navigationUI: 'hide' }) ?? d.webkitRequestFullscreen?.());
+    } catch { /* not allowed in this frame/browser */ }
+    try { await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape'); } catch { /* unsupported */ }
   }
 
   // ------------------------------------------------------------ loading
@@ -78,6 +90,7 @@ export class UI {
     const isTouch = matchMedia('(pointer: coarse)').matches;
     this.title.innerHTML = `<div class="logo"><span class="l1">NIGHT DRIVE</span><span class="l2">NEON CITY</span></div>
       <button class="btn-play" data-act="play">JOGAR</button>
+      <button class="chip btn-fs" data-act="fullscreen">⛶ Tela cheia (horizontal)</button>
       <div class="title-opts">
         <div class="paints interactive"></div>
         <select class="chip" data-act="quality" aria-label="Qualidade gráfica">
@@ -198,10 +211,11 @@ export class UI {
       if (a === 'resume') game.resume();
       if (a === 'restart') { game.resetCar(); game.resume(); }
       if (a === 'title') { game.setState('title'); }
+      if (a === 'fullscreen') return;
     };
     this.root.querySelectorAll<HTMLButtonElement>('button[data-act]').forEach((b) => {
       const a = b.dataset.act!;
-      if (a === 'play') return;
+      if (a === 'play' || a === 'fullscreen') return;
       b.addEventListener('click', (e) => { e.stopPropagation(); act(a); (b as HTMLElement).blur(); });
     });
     const q = this.pauseScr.querySelector('select[data-act=quality]') as HTMLSelectElement;
@@ -252,6 +266,7 @@ export class UI {
     this.arc.style.strokeDashoffset = String(len * (1 - Math.min(1, kmh / 300)));
     const rl = Number(this.rpmArc.dataset.len);
     this.rpmArc.style.strokeDashoffset = String(rl * (1 - Math.min(1, p.rpm / 8000)));
+    if (this.minimap) this.minimap.others = g.traffic.cars;
     this.minimap?.draw(g.car.root.position.x, g.car.root.position.z, g.car.root.rotation.y);
     if (this.showFps) this.fpsEl.textContent = `${g.fps.toFixed(0)} FPS · ${g.quality} · ${(g.resScale * 100).toFixed(0)}%`;
   }

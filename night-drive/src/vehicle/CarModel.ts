@@ -61,6 +61,7 @@ export class CarModel {
   private readonly drl: THREE.MeshBasicMaterial;
   private readonly lens: THREE.MeshBasicMaterial;
   private readonly tail: THREE.MeshBasicMaterial;
+  get tailMaterial() { return this.tail; }
   private readonly tailLens: THREE.MeshPhysicalMaterial;
   private readonly flares: THREE.Sprite[] = [];
 
@@ -78,7 +79,7 @@ export class CarModel {
     this.tailLens = new THREE.MeshPhysicalMaterial({ color: 0x3a0306, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.85, emissive: new THREE.Color(0.25, 0, 0), clearcoat: 1 });
     const trim = vertexPbrMaterial(1.0);
     const wheelMat = vertexPbrMaterial(0.9);
-    const glass = new THREE.MeshPhysicalMaterial({ color: 0x0b0e12, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.42, envMapIntensity: 1.8, depthWrite: false, side: THREE.DoubleSide, clearcoat: 1 });
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0x0b0e12, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.58, envMapIntensity: 2.0, depthWrite: false, side: THREE.DoubleSide, clearcoat: 1 });
     const clear = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.02, transparent: true, opacity: 0.12, envMapIntensity: 1.5, depthWrite: false });
 
     if (scene && info) {
@@ -249,7 +250,7 @@ export class CarModel {
     this.lens.color.setRGB(1, 1.08, 1.2).multiplyScalar(0.4 + lights * 6);
     for (const f of this.flares) f.visible = s.lights;
     const brake = Math.max(s.brake, 0);
-    const tailI = lights * 2.4 + brake * 10;
+    const tailI = lights * 4 + brake * 11;
     this.tail.color.setRGB(tailI + 0.15, (tailI + 0.15) * 0.035, (tailI + 0.15) * 0.02);
     this.tailLens.emissive.setRGB(0.15 * lights + brake * 0.8, 0, 0);
     this.tailLight.intensity = lights * 0.8 + brake * 4.5 + (s.reverse ? 2 : 0);

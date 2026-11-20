@@ -203,7 +203,7 @@ void main() {
   float F0 = 0.025;
   float fres = F0 + (1.0 - F0) * pow(1.0 - NdV, 5.0);
   float specAmt = clamp(fres * 1.25 + puddle * 0.35, 0.0, 1.0) * mix(0.25, 1.0, wet) * reflK;
-  specAmt *= 1.0 - rough * 0.55;
+  specAmt *= (1.0 - rough * 0.6) * 0.82;
   if (uReflectOn > 0.5) {
     vec2 ruv = vReflUv.xy / vReflUv.w;
     ruv += N.xz * (0.035 + rough * 0.06);
