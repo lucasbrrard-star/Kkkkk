@@ -19,7 +19,7 @@ export const cityCam = (t: number) => {
   const P = {x: 540, y: lerp(850, 960, u)};
   return {D, A, P, u};
 };
-const layerScale = (D: number, delta: number) => (1 + delta) / (D + delta);
+export const layerScale = (D: number, delta: number) => (1 + delta) / (D + delta);
 
 // transform CSS para uma camada desenhada nas coordenadas da vista final
 const layerStyle = (t: number, delta: number): React.CSSProperties => {
@@ -46,7 +46,7 @@ export const pairStyle = (t: number): React.CSSProperties => {
 
 // ------------------------------------------------------------ figurinhas (profissões)
 type Pose = {lh: [number, number]; rh: [number, number]};
-const ik2 = (sx: number, sy: number, tx: number, ty: number, L: number, bend: number) => {
+export const ik2 = (sx: number, sy: number, tx: number, ty: number, L: number, bend: number) => {
   const dx = tx - sx, dy = ty - sy;
   const d = Math.min(Math.hypot(dx, dy), 2 * L - 0.5);
   const base = Math.atan2(dy, dx);
@@ -54,7 +54,7 @@ const ik2 = (sx: number, sy: number, tx: number, ty: number, L: number, bend: nu
   return {ex: sx + L * Math.cos(base + a), ey: sy + L * Math.sin(base + a), hx: sx + d * Math.cos(base), hy: sy + d * Math.sin(base)};
 };
 
-const Fig: React.FC<{x: number; y: number; pose: Pose; hair?: 'short' | 'bun' | 'long' | 'cap' | 'chef'; top?: string; skin?: string; seated?: boolean}> = ({
+export const Fig: React.FC<{x: number; y: number; pose: Pose; hair?: 'short' | 'bun' | 'long' | 'cap' | 'chef'; top?: string; skin?: string; seated?: boolean}> = ({
   x,
   y,
   pose,
@@ -100,8 +100,10 @@ const Fig: React.FC<{x: number; y: number; pose: Pose; hair?: 'short' | 'bun' | 
 };
 
 // cada vinheta: 200×480 (exibida a 100×240 na fachada)
-type VigProps = {t: number};
-const Room: React.FC<{children: React.ReactNode; warm?: number}> = ({children, warm = 1}) => (
+export type VigProps = {t: number};
+export type CityVariant = 'normal' | 'warm' | 'cold';
+export const CityVariantCtx = React.createContext<CityVariant>('normal');
+export const Room: React.FC<{children: React.ReactNode; warm?: number}> = ({children, warm = 1}) => (
   <g>
     <rect x={0} y={0} width={200} height={480} fill={warm ? '#4a2c18' : '#1a2233'} />
     <rect x={0} y={0} width={200} height={480} fill="url(#vigg)" />
@@ -110,7 +112,7 @@ const Room: React.FC<{children: React.ReactNode; warm?: number}> = ({children, w
   </g>
 );
 
-const VIGS: Record<string, React.FC<VigProps>> = {
+export const VIGS: Record<string, React.FC<VigProps>> = {
   medica: ({t}) => (
     <Room>
       <rect x={110} y={150} width={80} height={110} rx={6} fill="#0b1626" stroke="#2c4a6a" strokeWidth={3} />
@@ -241,19 +243,31 @@ const VIGS: Record<string, React.FC<VigProps>> = {
 };
 
 // grade da fachada (4 colunas × 4 andares). O par fica no andar 1, colunas 1–2.
-const COLS = [319, 433, 547, 661];
-const ROWS = [470, 730, 990, 1250];
-const GRID: (string | null)[][] = [
+export const COLS = [319, 433, 547, 661];
+export const ROWS = [470, 730, 990, 1250];
+export const GRID: (string | null)[][] = [
   ['medica', 'professor', 'designer', 'chef'],
   ['atendente', null, null, 'arquiteta'],
   ['mecanico', 'cientista', 'programadora', 'barista'],
   ['planta', 'vazio', 'planta', 'vazio'],
 ];
 
-const waveAt = (t: number, x: number) => smooth((t - 7.72 - ((1080 - x) / 1080) * 0.55) / 0.3);
+export const waveAt = (t: number, x: number) => smooth((t - 7.72 - ((1080 - x) / 1080) * 0.55) / 0.3);
 
-const HeroBuilding: React.FC<{below: boolean}> = ({below}) => {
+const COLD_ROOM: React.FC<VigProps> = ({t}) => (
+  <g>
+    <rect x={0} y={0} width={200} height={480} fill="#0a1220" />
+    <rect x={0} y={400} width={200} height={80} fill="#05080e" />
+    <rect x={50} y={180} width={100} height={70} rx={6} fill="#0d2236" />
+    <rect x={58} y={188} width={84} height={54} fill="#59e1ff" opacity={0.25 + 0.2 * (Math.sin(t * 3) > 0 ? 1 : 0)} />
+    <rect x={20} y={300} width={160} height={10} fill="#141c28" />
+    <path d="M150 300 L160 250 L185 240" stroke="#3a4a5e" strokeWidth={8} fill="none" strokeLinecap="round" />
+  </g>
+);
+
+export const HeroBuilding: React.FC<{below: boolean}> = ({below}) => {
   const t = useT();
+  const variant = React.useContext(CityVariantCtx);
   // contorno com furos nas janelas
   let holes = '';
   for (const y of ROWS) for (const x of COLS) holes += `M${x} ${y} h100 v240 h-100 Z `;
@@ -271,8 +285,8 @@ const HeroBuilding: React.FC<{below: boolean}> = ({below}) => {
         {GRID.map((row, r) =>
           row.map((v, c) => {
             if (!v) return null;
-            const V = VIGS[v];
-            const w = waveAt(t, COLS[c] + 50);
+            const V = variant === 'cold' ? COLD_ROOM : VIGS[v];
+            const w = variant === 'normal' ? waveAt(t, COLS[c] + 50) : 0;
             return (
               <g key={`${r}${c}`} transform={`translate(${COLS[c]} ${ROWS[r]}) scale(0.5)`}>
                 <V t={t + r * 0.7 + c * 0.3} />
@@ -311,8 +325,9 @@ const HeroBuilding: React.FC<{below: boolean}> = ({below}) => {
   );
 };
 
-const MidBuildings: React.FC = () => {
+export const MidBuildings: React.FC = () => {
   const t = useT();
+  const variant = React.useContext(CityVariantCtx);
   const wins = useMemo(() => {
     const r = seeded(12);
     const out: {x: number; y: number; on: boolean; c: string}[] = [];
@@ -332,10 +347,12 @@ const MidBuildings: React.FC = () => {
       <rect x={-160} y={610} width={430} height={4} fill="#ffb27a" opacity={0.3} />
       <rect x={810} y={540} width={430} height={4} fill="#ffb27a" opacity={0.3} />
       {wins.map((w, i) => {
-        const wv = waveAt(t, w.x);
+        const wv = variant === 'normal' ? waveAt(t, w.x) : 0;
+        const on = variant === 'warm' ? w.on || (i % 3 === 0) : variant === 'cold' ? w.on && i % 4 === 0 : w.on;
+        const col = variant === 'cold' ? '#2a5a78' : w.c;
         return (
           <g key={i}>
-            <rect x={w.x} y={w.y} width={36} height={50} fill={w.on ? w.c : '#0b111b'} opacity={w.on ? 0.75 : 1} />
+            <rect x={w.x} y={w.y} width={36} height={50} fill={on ? col : '#0b111b'} opacity={on ? 0.75 : 1} />
             {wv > 0 ? <rect x={w.x} y={w.y} width={36} height={50} fill="#59e1ff" opacity={0.6 * wv} /> : null}
           </g>
         );
@@ -344,7 +361,7 @@ const MidBuildings: React.FC = () => {
   );
 };
 
-const Skyline: React.FC = () => {
+export const Skyline: React.FC = () => {
   const data = useMemo(() => {
     const r = seeded(5);
     const b: {x: number; w: number; h: number}[] = [];
@@ -365,7 +382,28 @@ const Skyline: React.FC = () => {
   );
 };
 
-const Sky: React.FC = () => (
+export const Sky: React.FC = () => {
+  const variant = React.useContext(CityVariantCtx);
+  if (variant === 'cold')
+    return (
+      <svg width={1080} height={1920} style={{position: 'absolute', overflow: 'visible'}}>
+        <defs>
+          <linearGradient id="cskyc" gradientUnits="userSpaceOnUse" x1="0" y1="-600" x2="0" y2="1600">
+            <stop offset="0" stopColor="#0b1018" />
+            <stop offset="0.45" stopColor="#243041" />
+            <stop offset="0.62" stopColor="#4a5a6e" />
+            <stop offset="1" stopColor="#5e6c7c" />
+          </linearGradient>
+        </defs>
+        <rect x={-800} y={-800} width={2680} height={3600} fill="url(#cskyc)" />
+        {[[200, 380, 300, 40], [760, 300, 320, 36], [500, 520, 260, 30]].map(([x, y, rx, ry], i) => (
+          <ellipse key={i} cx={x} cy={y} rx={rx} ry={ry} fill="#1a2230" opacity={0.6} filter="blur(10px)" />
+        ))}
+      </svg>
+    );
+  return <SkyWarm />;
+};
+const SkyWarm: React.FC = () => (
   <svg width={1080} height={1920} style={{position: 'absolute', overflow: 'visible'}}>
     <defs>
       <linearGradient id="csky" gradientUnits="userSpaceOnUse" x1="0" y1="-600" x2="0" y2="1600">
@@ -397,8 +435,10 @@ const Sky: React.FC = () => (
   </svg>
 );
 
-const Street: React.FC = () => {
+export const Street: React.FC = () => {
   const t = useT();
+  const variant = React.useContext(CityVariantCtx);
+  const cold = variant === 'cold';
   const busX = 1300 - ((t - 6.0) * 260) % 2400;
   const walkers = [
     {x0: 120, sp: 40, c: '#2b2f3a'},
@@ -416,15 +456,16 @@ const Street: React.FC = () => {
       <rect x={-400} y={1770} width={1880} height={200} fill="#2e333d" />
       {/* ônibus */}
       <g transform={`translate(${busX} 1586)`}>
-        <rect x={0} y={0} width={420} height={120} rx={16} fill="#1f6fd1" />
-        {[0, 1, 2, 3, 4, 5].map((k) => (
-          <rect key={k} x={20 + k * 64} y={16} width={52} height={44} rx={6} fill="#ffe3b0" opacity={0.85} />
+        <rect x={0} y={0} width={cold ? 220 : 420} height={120} rx={cold ? 40 : 16} fill={cold ? '#2a3442' : '#1f6fd1'} />
+        {(cold ? [0, 1, 2] : [0, 1, 2, 3, 4, 5]).map((k) => (
+          <rect key={k} x={20 + k * 64} y={16} width={52} height={44} rx={6} fill={cold ? '#0e1a26' : '#ffe3b0'} opacity={0.85} />
         ))}
+        {cold ? <rect x={180} y={50} width={30} height={8} fill="#59e1ff" /> : null}
         <circle cx={80} cy={120} r={22} fill="#0d0f13" />
         <circle cx={340} cy={120} r={22} fill="#0d0f13" />
       </g>
       {/* pedestres */}
-      {walkers.map((w, i) => {
+      {(cold ? [] : variant === 'warm' ? [...walkers, {x0: 600, sp: 26, c: '#7a4a2a'}, {x0: 260, sp: -30, c: '#2a4a5a'}] : walkers).map((w, i) => {
         const x = w.x0 + (t - 6) * w.sp;
         const ph = t * 9 + i;
         return (

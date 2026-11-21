@@ -485,3 +485,45 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# ------------------------------------------------------------------ voz completa (vídeo inteiro)
+def build_voice_full(total_sec):
+    n_total = int(total_sec * SR)
+    out = np.zeros(n_total)
+    x, sr = sf.read(ROOT + 'narr_raw.wav')
+    a, b = int(6.07 * SR), int(6.24 * SR)
+    xf = int(0.015 * SR)
+    fade = np.linspace(0, 1, xf)
+    head = x[:a].copy()
+    tail = x[b:].copy()
+    head[-xf:] = head[-xf:] * (1 - fade) + tail[:xf] * fade
+    p1 = np.concatenate([head, tail[xf:]])
+    y, _ = sf.read(ROOT + 'narr2_raw.wav')
+    # pausas: antes de "Mas" (+0,5 s), depois de "emprego…" (+0,25 s), antes de "Você" (+0,2 s)
+    cuts = [(8.95, 0.5), (14.15, 0.25), (16.6, 0.2)]
+    parts = []
+    prev = 0
+    for (tc, add) in cuts:
+        i = int(tc * SR)
+        parts.append(y[prev:i])
+        parts.append(np.zeros(int(add * SR)))
+        prev = i
+    parts.append(y[prev:])
+    p2 = np.concatenate(parts)
+    out[:len(p1)] += p1
+    i2 = int(13.85 * SR)
+    out[i2:i2 + len(p2)] += p2[:n_total - i2]
+    x = out
+    x = hp(x, 85, 2)
+    x = peq(x, 220, 1.5, 0.8)
+    x = peq(x, 3200, 2.5, 0.9)
+    x = peq(x, 9000, 1.5, 0.7)
+    x = lp(x, 14000, 4)
+    env = np.sqrt(signal.lfilter([0.002], [1, -0.998], x ** 2) + 1e-9)
+    lvl = 20 * np.log10(env + 1e-9)
+    thr = -24
+    gr = np.where(lvl > thr, (thr - lvl) * (1 - 1 / 3), 0)
+    gr = signal.lfilter([0.01], [1, -0.99], gr)
+    x = x * db(gr)
+    return x / np.max(np.abs(x)) * 0.8

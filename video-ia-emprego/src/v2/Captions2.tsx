@@ -14,13 +14,15 @@ export const PAGES_V2: {idx: number[]; accent?: number[]; warm?: number[]}[] = [
   {idx: [15, 16, 17]},
 ];
 
-export const Captions2: React.FC<{top?: number}> = ({top = 1430}) => {
+type Page = {idx: number[]; accent?: number[]; warm?: number[]};
+export const Captions2: React.FC<{top?: number; words?: typeof WORDS; pagesIn?: Page[]}> = ({top = 1430, words = WORDS, pagesIn = PAGES_V2}) => {
   const t = useT();
-  const pages = PAGES_V2.map((p, i) => {
-    const first = WORDS[p.idx[0]];
-    const last = WORDS[p.idx[p.idx.length - 1]];
-    const next = PAGES_V2[i + 1];
-    const end = next ? Math.min(WORDS[next.idx[0]].s - 0.03, last.e + 0.35) : last.e + 0.4;
+  const WORDS_ = words;
+  const pages = pagesIn.map((p, i) => {
+    const first = WORDS_[p.idx[0]];
+    const last = WORDS_[p.idx[p.idx.length - 1]];
+    const next = pagesIn[i + 1];
+    const end = next ? Math.min(WORDS_[next.idx[0]].s - 0.03, last.e + 0.35) : last.e + 0.4;
     return {...p, start: first.s - 0.06, end};
   });
   const page = pages.find((p) => t >= p.start && t < p.end);
@@ -44,7 +46,7 @@ export const Captions2: React.FC<{top?: number}> = ({top = 1430}) => {
           }}
         >
           {page.idx.map((wi) => {
-            const w = WORDS[wi];
+            const w = WORDS_[wi];
             const u = w.s < 0.05 ? 1 : outCubic(prog(t, w.s - 0.04, w.s + 0.14));
             const op = 0.38 + 0.62 * u;
             const spoken = t >= w.s;

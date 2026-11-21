@@ -24,16 +24,21 @@ const ik = (S: {x: number; y: number}, T: {x: number; y: number}, L1: number, L2
 };
 
 // estado de atuação: digitando -> pausa -> mão na nuca, olha para o lado da IA
-export const actState = (t: number) => {
+export const actState = (t: number, together = false) => {
+  if (together) {
+    const look = Math.exp(-Math.pow((t - 30.75) / 0.35, 2));
+    const blink = Math.exp(-Math.pow((t - 29.9) / 0.04, 2));
+    return {stop: 0, look: 0.6 * look, worry: 0, blink: clamp(blink), smile: smooth(prog(t, 29.7, 30.3))};
+  }
   const stop = inOutCubic(prog(t, 5.1, 5.45));
   const look = inOutCubic(prog(t, 5.3, 5.7));
   const worry = spring(prog(t, 5.45, 6.0), 5, 7);
   const blink = Math.exp(-Math.pow((t - 4.75) / 0.04, 2)) + Math.exp(-Math.pow((t - 5.85) / 0.05, 2));
-  return {stop, look, worry, blink: clamp(blink)};
+  return {stop, look, worry, blink: clamp(blink), smile: 0};
 };
 
-const Head: React.FC<{t: number}> = ({t}) => {
-  const {look, worry, blink} = actState(t);
+const Head: React.FC<{t: number; together?: boolean}> = ({t, together}) => {
+  const {look, worry, blink, smile} = actState(t, together);
   const typing = 1 - look;
   const nod = Math.sin(t * 5.5) * 1.2 * typing;
   const tilt = -7 * look + nod + 5 * typing;
@@ -87,16 +92,16 @@ const Head: React.FC<{t: number}> = ({t}) => {
         <path d={`M71 -14 Q84 ${-14 - 9 * eyeOpen} 97 -12`} stroke="#140c08" strokeWidth={3.4} fill="none" strokeLinecap="round" />
       </g>
       {/* boca */}
-      <path d={`M100 ${69 + 2.5 * worry} L110 68`} stroke="#3a1f14" strokeWidth={2.6} strokeLinecap="round" />
+      <path d={smile > 0.05 ? `M99 ${67 - smile} Q104 ${67 + 4 * smile} 111 ${66 - 2 * smile}` : `M100 ${69 + 2.5 * worry} L110 68`} stroke="#3a1f14" strokeWidth={2.6} strokeLinecap="round" fill="none" />
       {/* pescoço */}
       <path d="M-34 150 L28 150 L34 190 L-40 190 Z" fill="#6e4329" />
     </g>
   );
 };
 
-export const WorkerScene: React.FC = () => {
+export const WorkerScene: React.FC<{together?: boolean}> = ({together}) => {
   const t = useT();
-  const {stop, look, worry} = actState(t);
+  const {stop, look, worry} = actState(t, together);
   // respiração e recuo do corpo
   const lean = -3.5 * look;
   const H = {x: 178, y: 735};
@@ -104,7 +109,7 @@ export const WorkerScene: React.FC = () => {
   // alvo da mão: teclado (digitando) -> nuca
   const kb = {x: 372 + Math.sin(t * 23) * 5 * (1 - stop), y: 1118 + Math.abs(Math.sin(t * 17)) * -7 * (1 - stop)};
   const neck = {x: 268, y: 852 + Math.sin(t * 3) * 3 * smooth(prog(t, 5.45, 5.6))};
-  const g = inOutCubic(prog(t, 5.12, 5.5));
+  const g = together ? 0 : inOutCubic(prog(t, 5.12, 5.5));
   const target = {x: lerp(kb.x, neck.x, g), y: lerp(kb.y, neck.y, g) - Math.sin(Math.PI * g) * 40};
   const pole = {x: lerp(150, 330, g), y: lerp(1180, 1150, g)};
   const {E, T} = ik(S, target, 175, 180, pole);
@@ -209,7 +214,7 @@ export const WorkerScene: React.FC = () => {
           <path d="M88 940 C120 905 210 905 248 950 C268 1010 268 1080 262 1170 L60 1170 C56 1080 62 990 88 940 Z" fill="url(#wshirt)" />
           <path d="M248 950 C268 1010 268 1080 262 1170" stroke="#9fefff" strokeOpacity={0.35} strokeWidth={4} fill="none" />
           <g transform={`translate(${H.x} ${H.y})`}>
-            <Head t={t} />
+            <Head t={t} together={together} />
           </g>
           {/* braço */}
           <line x1={S.x} y1={S.y} x2={E.x} y2={E.y} stroke="url(#wshirt)" strokeWidth={64} strokeLinecap="round" />
@@ -225,7 +230,8 @@ export const WorkerScene: React.FC = () => {
         </g>
       </svg>
       {/* sombra quente + vinheta lateral */}
-      <AbsoluteFill style={{background: 'linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 40%)'}} />
+      <AbsoluteFill style={{background: 'linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 40%)', opacity: together ? 0.4 : 1}} />
+      {together ? <AbsoluteFill style={{background: 'radial-gradient(circle at 30% 45%, rgba(255,190,110,0.16), rgba(0,0,0,0) 60%)', mixBlendMode: 'screen'}} /> : null}
       <AbsoluteFill style={{opacity: 0.12 * worry, background: 'radial-gradient(circle at 25% 40%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.7) 100%)'}} />
     </AbsoluteFill>
   );

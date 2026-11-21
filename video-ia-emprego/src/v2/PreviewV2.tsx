@@ -30,7 +30,7 @@ const SideLabels: React.FC = () => {
   );
 };
 
-const Stage: React.FC = () => {
+export const StageV2: React.FC = () => {
   const t = useT();
   const recede = smooth(prog(t, T_MORPH0, 2.8));
   return (
@@ -72,7 +72,7 @@ export const PreviewV2: React.FC = () => {
       {times.map((ts, i) => (
         <AbsoluteFill key={i} style={{opacity: 1 / (i + 1)}}>
           <TimeProvider t={ts}>
-            <Stage />
+            <StageV2 />
           </TimeProvider>
         </AbsoluteFill>
       ))}
