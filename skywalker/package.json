@@ -1,0 +1,35 @@
+{
+  "name": "skywalker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SKYWALKER — jogo de terror em primeira pessoa numa floresta à noite (Three.js, celular na horizontal).",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "assets:fetch": "python3 tools/fetch.py",
+    "assets": "tsx tools/build.ts",
+    "artifact": "vite build && node tools/artifact.mjs",
+    "audio": "python3 tools/audio.py",
+    "skywalker": "blender -b -P tools/blender/build_skywalker.py -- tools/cache tools/out/skywalker_raw.glb",
+    "credits": "python3 tools/credits.py",
+    "test": "vite build && node tests/play.mjs"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "4.1.1",
+    "@gltf-transform/extensions": "4.1.1",
+    "@gltf-transform/functions": "4.1.1",
+    "@types/three": "0.170.0",
+    "draco3dgltf": "1.5.7",
+    "meshopt-sloppy": "npm:meshoptimizer@^1.0.1",
+    "meshoptimizer": "0.22.0",
+    "sharp": "0.33.5",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vite": "5.4.21"
+  }
+}

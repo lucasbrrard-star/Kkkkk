@@ -1,0 +1,11 @@
+{
+  "name": "Skywalker",
+  "short_name": "Skywalker",
+  "description": "Terror em primeira pessoa numa floresta à noite.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#040507",
+  "theme_color": "#040507",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }]
+}

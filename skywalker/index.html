@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<title>Skywalker</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#040507">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Special+Elite&display=swap">
+<link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="view"></canvas>
+  <div id="fx-overlay" aria-hidden="true"></div>
+  <div id="fade" aria-hidden="true"></div>
+
+  <!-- ===================== HUD ===================== -->
+  <div id="hud" hidden>
+    <div id="touch-layer"></div>
+    <div id="case">
+      <div id="case-label">CASO 1147 · <span id="clue-count">PISTAS 0/5</span></div>
+      <div id="objective">Encontre o Theo.</div>
+    </div>
+    <div id="compass" aria-hidden="true"><div id="compass-mark"></div></div>
+    <div id="crosshair" aria-hidden="true"></div>
+    <div id="subs" aria-live="polite"></div>
+    <div id="clue-card" hidden>
+      <div class="tag">EVIDÊNCIA</div>
+      <h3 id="clue-title"></h3>
+      <canvas id="clue-img" width="512" height="360" hidden></canvas>
+      <p id="clue-text"></p>
+    </div>
+    <div id="joy"><div id="joy-knob"></div></div>
+    <button id="btn-pause" class="btn small" aria-label="Pausar">
+      <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
+    </button>
+    <div id="right-pad">
+      <button id="btn-light" class="btn mid" aria-label="Lanterna">
+        <svg viewBox="0 0 24 24"><rect x="2" y="10" width="9" height="4.5" rx="1"/><path d="M11 9.2l4-2.2v10.4l-4-2.2z"/><path d="M17 8l4-2M17 12.2h5M17 16.4l4 2" fill="none" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <span class="meter"><span id="battery-fill"></span></span>
+      </button>
+      <button id="btn-reload" class="btn mid" aria-label="Recarregar">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" fill="none" stroke-width="2"/><circle cx="12" cy="7.5" r="1.8"/><circle cx="16" cy="10.5" r="1.8"/><circle cx="14.5" cy="15.5" r="1.8"/><circle cx="9.5" cy="15.5" r="1.8"/><circle cx="8" cy="10.5" r="1.8"/></svg>
+      </button>
+      <button id="btn-run" class="btn mid" aria-label="Correr">
+        <svg viewBox="0 0 24 24"><circle cx="14" cy="4.5" r="2"/><path d="M13 8l-4 3 2 3-3 6M13 8l3 4 4 1M11 14l4 2 1 5" fill="none" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button id="btn-fire" class="btn big" aria-label="Atirar">
+        <svg viewBox="0 0 24 24"><path d="M3 9h13l1-2h3v3l-2 1v2H11l-1 2H8l-1 5H4l1-6-2-1z"/></svg>
+        <span id="ammo">6 | 12</span>
+      </button>
+    </div>
+    <button id="btn-use" class="btn use" hidden>PEGAR</button>
+  </div>
+
+  <!-- ===================== TELAS ===================== -->
+  <section id="screen-loading" class="screen">
+    <div class="folder">
+      <div class="stamp">CONFIDENCIAL</div>
+      <p class="meta">DELEGACIA DE SERRA FRIA · CASO Nº 1147</p>
+      <h1 class="title">SKYWALKER</h1>
+      <p class="meta">Desaparecimento · Theo, 8 anos · Visto pela última vez na orla da mata</p>
+      <div class="bar"><div id="load-fill"></div></div>
+      <p id="load-label" class="meta">abrindo o arquivo…</p>
+    </div>
+  </section>
+
+  <section id="screen-title" class="screen" hidden>
+    <div class="folder">
+      <div class="stamp">CONFIDENCIAL</div>
+      <p class="meta">CASO Nº 1147 · TERCEIRA NOITE</p>
+      <h1 class="title">SKYWALKER</h1>
+      <p class="lede">Ele levou o seu filho. Ele se disfarça de bicho da floresta.<br>Não confie em nada que te olha de volta.</p>
+      <div class="menu">
+        <button id="btn-start" class="cta">ENTRAR NA FLORESTA</button>
+        <button id="btn-howto" class="ghost">COMO JOGAR</button>
+        <button id="btn-credits" class="ghost">CRÉDITOS</button>
+      </div>
+      <p class="meta small">Jogue com fones de ouvido, no escuro, com o celular deitado.</p>
+    </div>
+  </section>
+
+  <section id="screen-howto" class="screen" hidden>
+    <div class="folder wide">
+      <h2>Anotações do investigador</h2>
+      <div class="cols">
+        <ul>
+          <li><b>Polegar esquerdo:</b> arraste para andar.</li>
+          <li><b>Polegar direito:</b> arraste para olhar.</li>
+          <li><b>Revólver:</b> toque para atirar (dá para mirar arrastando o próprio botão).</li>
+          <li><b>Corrida, lanterna e recarga:</b> botões ao lado do gatilho.</li>
+          <li><b>No computador:</b> WASD, mouse, clique atira, Shift corre, F lanterna, R recarrega, E pega.</li>
+        </ul>
+        <ul>
+          <li>Siga o <b>choro</b> para achar as 5 pistas do Theo. A marca no topo da tela mostra de onde veio o som.</li>
+          <li>Cervos de verdade fogem. <b>Se um cervo não foge, não respira e os olhos brilham vermelho na lanterna, não é um cervo.</b></li>
+          <li>Não dê as costas para ele. A luz forte o atrasa.</li>
+          <li>Dois tiros o espantam. Só no covil dá para acabar com ele.</li>
+          <li>Pegue pilhas e munição pelo caminho.</li>
+        </ul>
+      </div>
+      <button class="ghost back">VOLTAR</button>
+    </div>
+  </section>
+
+  <section id="screen-credits" class="screen" hidden>
+    <div class="folder wide">
+      <h2>Créditos</h2>
+      <p class="meta small">Modelos 3D gratuitos do BlenderKit e do Poly Haven, texturas do Poly Haven (CC0), animações transferidas de modelos do BlenderKit e dos exemplos do three.js. Sons e vozes gerados com ElevenLabs.</p>
+      <div id="credit-list" class="credits"></div>
+      <button class="ghost back">VOLTAR</button>
+    </div>
+  </section>
+
+  <section id="screen-pause" class="screen dim" hidden>
+    <div class="folder">
+      <h2>Pausa</h2>
+      <label class="row" for="sens">Sensibilidade <input id="sens" type="range" min="0.4" max="2.2" step="0.05" value="1"></label>
+      <label class="row" for="quality">Gráficos
+        <select id="quality"><option value="high">Alta</option><option value="low">Leve</option></select>
+      </label>
+      <div class="menu">
+        <button id="btn-resume" class="cta">CONTINUAR</button>
+        <button id="btn-restart" class="ghost">RECOMEÇAR DO ÚLTIMO PONTO</button>
+        <button id="btn-quit" class="ghost">MENU INICIAL</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-death" class="screen blood" hidden>
+    <div class="folder">
+      <h1 class="title red">ELE TE ENCONTROU</h1>
+      <p class="lede">O arquivo do caso 1147 ganhou mais uma página.</p>
+      <div class="menu"><button id="btn-retry" class="cta">TENTAR DE NOVO</button></div>
+    </div>
+  </section>
+
+  <section id="screen-ending" class="screen" hidden>
+    <div class="folder ending">
+      <p class="meta">CASO Nº 1147 · ENCERRADO</p>
+      <div id="ending-lines"></div>
+      <div class="menu" id="ending-menu" hidden>
+        <button id="btn-again" class="cta">JOGAR DE NOVO</button>
+        <button id="btn-credits2" class="ghost">CRÉDITOS</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="rotate" aria-live="polite">
+    <svg viewBox="0 0 64 64"><rect x="20" y="8" width="24" height="44" rx="4" fill="none" stroke-width="3"/><path d="M50 40a18 18 0 0 1-18 16" fill="none" stroke-width="3"/><path d="M28 54l4 3-1-5" stroke-width="3"/></svg>
+    <p>Deite o celular para jogar.</p>
+  </div>
+</div>
+<script type="module" src="./src/main.ts"></script>
+</body>
+</html>

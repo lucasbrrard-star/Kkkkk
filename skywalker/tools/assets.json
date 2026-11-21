@@ -1,0 +1,161 @@
+{
+ "models": [
+  {
+   "key": "creature_body",
+   "bk": "cf011d92",
+   "q": "Skeletal Humanoid Creature"
+  },
+  {
+   "key": "antler_trophy",
+   "bk": "4087d7fd",
+   "q": "Deer antler trophy"
+  },
+  {
+   "key": "deer",
+   "bk": "8a35d245",
+   "q": "deer rigged"
+  },
+  {
+   "key": "tree_evergreen",
+   "bk": "778c0477",
+   "q": "fir tree"
+  },
+  {
+   "key": "tree_pine",
+   "bk": "a8d4ed28",
+   "q": "pine tree"
+  },
+  {
+   "key": "tree_dead_bare",
+   "bk": "a805debd",
+   "q": "dead tree"
+  },
+  {
+   "key": "tree_dead_twisted",
+   "bk": "192b3d0e",
+   "q": "dead tree"
+  },
+  {
+   "key": "tree_half_dead",
+   "bk": "3af5a13e",
+   "q": "dead tree"
+  },
+  {
+   "key": "stump_scan",
+   "bk": "0dfdc58d",
+   "q": "dead tree"
+  },
+  {
+   "key": "cabin",
+   "bk": "271987fc",
+   "q": "cabin"
+  },
+  {
+   "key": "kids_shoe",
+   "bk": "4fe0b68f",
+   "q": "child shoe"
+  },
+  {
+   "key": "teddy",
+   "bk": "91659720",
+   "q": "teddy bear"
+  },
+  {
+   "key": "toy_car",
+   "bk": "6e6b3a76",
+   "q": "toy car"
+  },
+  {
+   "key": "walkie",
+   "bk": "d192855d",
+   "q": "walkie talkie"
+  },
+  {
+   "key": "revolver",
+   "bk": "450a8dd3",
+   "q": "revolver"
+  },
+  {
+   "key": "bone_pile",
+   "bk": "8e3df5aa",
+   "q": "bones pile"
+  },
+  {
+   "key": "human_skull",
+   "bk": "139ba285",
+   "q": "Human Skull"
+  },
+  {
+   "key": "campfire",
+   "bk": "6d624fc1",
+   "q": "campfire"
+  },
+  {
+   "key": "rock_moss_1",
+   "ph": "rock_moss_set_01"
+  },
+  {
+   "key": "rock_moss_2",
+   "ph": "rock_moss_set_02"
+  },
+  {
+   "key": "boulder",
+   "ph": "boulder_01"
+  },
+  {
+   "key": "fern",
+   "ph": "fern_02"
+  },
+  {
+   "key": "branches",
+   "ph": "dry_branches_medium_01"
+  },
+  {
+   "key": "stump",
+   "ph": "tree_stump_01"
+  },
+  {
+   "key": "dead_trunk",
+   "ph": "dead_tree_trunk"
+  },
+  {
+   "key": "roots",
+   "ph": "pine_roots"
+  },
+  {
+   "key": "flashlight_hand",
+   "bk": "13db3e7b",
+   "q": "flashlight"
+  },
+  {
+   "key": "deer_skull",
+   "bk": "feb6e549",
+   "q": "Deer skull"
+  }
+ ],
+ "textures": [
+  {
+   "key": "ground",
+   "ph": "forest_leaves_02"
+  },
+  {
+   "key": "ground2",
+   "ph": "brown_mud_leaves_01"
+  },
+  {
+   "key": "bark",
+   "ph": "pine_bark"
+  }
+ ],
+ "anims": [
+  {
+   "key": "Xbot",
+   "url": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/Xbot.glb"
+  },
+  {
+   "key": "treemonster",
+   "bk": "46c83316",
+   "q": "Tree Monster Rigged Animated"
+  }
+ ]
+}

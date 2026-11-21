@@ -1,0 +1,6 @@
+node_modules/
+dist/
+tools/cache/
+tools/out/
+test-results/
+*.log
