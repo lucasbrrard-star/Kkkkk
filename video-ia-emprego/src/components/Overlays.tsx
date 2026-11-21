@@ -118,6 +118,8 @@ export const SciFiTitle: React.FC = () => {
   const lineW = outExpo(prog(t, 6.4, 6.9));
   return (
     <AbsoluteFill style={{pointerEvents: 'none'}}>
+      {/* véu escuro para leitura do título sobre o feixe do núcleo */}
+      <AbsoluteFill style={{opacity: smooth(prog(t, 6.36, 6.8)), background: 'radial-gradient(ellipse 75% 22% at 50% 30%, rgba(2,5,12,0.72) 0%, rgba(2,5,12,0.45) 55%, rgba(2,5,12,0) 100%)'}} />
       <div style={{position: 'absolute', left: 0, right: 0, top: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', transform: `scale(${drift})`}}>
         <div style={{display: 'flex', alignItems: 'center', gap: 22, marginBottom: 26}}>
           <div style={{width: 120 * lineW, height: 2, background: 'linear-gradient(90deg, transparent, #59e1ff)'}} />
