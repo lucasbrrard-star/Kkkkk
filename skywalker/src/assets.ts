@@ -4,6 +4,8 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 export const BASE = 'assets/';
+/** extensão dos modelos: .glb no build normal; .json (glTF com recursos embutidos) na versão publicada como Artifact */
+const MODEL_EXT = (window as unknown as { __SW_MODEL_EXT?: string }).__SW_MODEL_EXT ?? 'glb';
 
 export const MODEL_KEYS = [
   'skywalker', 'deer',
@@ -42,7 +44,7 @@ export async function loadAll(audioCtx: AudioContext, onProgress: (f: number, la
   const sounds: Partial<Record<SoundKey, AudioBuffer>> = {};
 
   for (const k of MODEL_KEYS) {
-    jobs.push({ w: manifest.models[k]?.kb ?? 200, label: 'modelos', run: async () => { models[k] = await gltf.loadAsync(`${BASE}models/${k}.glb`); } });
+    jobs.push({ w: manifest.models[k]?.kb ?? 200, label: 'modelos', run: async () => { models[k] = await gltf.loadAsync(`${BASE}models/${k}.${MODEL_EXT}`); } });
   }
   for (const t of ['ground', 'ground2']) for (const m of ['diff', 'nor', 'rough']) {
     jobs.push({ w: 150, label: 'texturas', run: async () => {
