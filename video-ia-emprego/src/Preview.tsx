@@ -84,7 +84,7 @@ const Stage: React.FC<{world: HTMLCanvasElement | null}> = ({world}) => {
   );
 };
 
-const useFonts = () => {
+export const useFonts = () => {
   const [handle] = useState(() => delayRender('fonts'));
   useEffect(() => {
     Promise.all([
