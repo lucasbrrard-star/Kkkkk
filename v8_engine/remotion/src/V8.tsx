@@ -322,12 +322,30 @@ const EndTitle: React.FC = () => {
 };
 
 // ------------------------------------------------------------------ composição
-export const V8: React.FC = () => {
+export type V8Props = {avail?: number; raw?: boolean};
+
+const Pending: React.FC = () => {
+  const f = useCurrentFrame();
+  return (
+    <AbsoluteFill style={{background: 'radial-gradient(ellipse at 50% 45%, #15191f 0%, #050608 70%)', alignItems: 'center', justifyContent: 'center'}}>
+      <div style={{fontFamily: COND, fontWeight: 600, fontSize: 46, letterSpacing: '0.2em', color: 'rgba(235,240,245,0.75)', textAlign: 'center'}}>
+        TRECHO EM RENDERIZAÇÃO<br />
+        <span style={{fontFamily: MONO, fontSize: 30, letterSpacing: '0.05em', color: C.amber}}>{(f / FPS).toFixed(1)} s</span>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+export const V8: React.FC<V8Props> = ({avail = 900, raw = false}) => {
   const f = useCurrentFrame();
   const t = f / FPS;
   return (
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
-      <Img src={staticFile(`frames/u_${pad(f + 1)}.jpg`)} style={{width: W, height: H, position: 'absolute', inset: 0}} />
+      {f < avail ? (
+        <Img src={staticFile(raw ? `raw/f_${pad(f + 1)}.png` : `frames/u_${pad(f + 1)}.jpg`)} style={{width: W, height: H, position: 'absolute', inset: 0}} />
+      ) : (
+        <Pending />
+      )}
       {/* vinheta */}
       <AbsoluteFill style={{background: 'radial-gradient(ellipse 85% 70% at 50% 48%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%)'}} />
       <Kicker />

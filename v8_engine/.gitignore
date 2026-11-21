@@ -5,3 +5,4 @@ remotion/public/frames/
 remotion/public/audio/
 *.blend1
 __pycache__/
+remotion/public/raw
