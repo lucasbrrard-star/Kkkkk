@@ -33,7 +33,9 @@ export interface Assets {
 }
 
 export async function loadAll(audioCtx: AudioContext, onProgress: (f: number, label: string) => void): Promise<Assets> {
-  const manifest = await (await fetch(BASE + 'manifest.json')).json();
+  const mr = await fetch(BASE + 'manifest.json');
+  if (!mr.ok) throw new Error(`manifest ${mr.status} ${mr.url}`);
+  const manifest = await mr.json();
   const gltf = new GLTFLoader();
   gltf.setMeshoptDecoder(MeshoptDecoder);
   const texLoader = new THREE.TextureLoader();
@@ -70,7 +72,10 @@ export async function loadAll(audioCtx: AudioContext, onProgress: (f: number, la
   const worker = async () => {
     while (i < jobs.length) {
       const j = jobs[i++];
-      await j.run();
+      let ok = false;
+      for (let t = 0; t < 3 && !ok; t++) {
+        try { await j.run(); ok = true; } catch (e) { if (t === 2) throw new Error(`${j.label}: ${(e as Error)?.message ?? e}`); await new Promise((r) => setTimeout(r, 600)); }
+      }
       done += j.w;
       onProgress(done / total, j.label);
     }

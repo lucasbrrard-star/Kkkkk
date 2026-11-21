@@ -695,6 +695,6 @@ class Game {
 const game = new Game();
 game.boot().catch((e) => {
   console.error(e);
-  $('load-label').textContent = 'Não foi possível abrir o jogo neste navegador (WebGL 2 é necessário).';
+  $('load-label').textContent = `Erro ao abrir: ${(e && (e.message || e)) ?? e}`.slice(0, 220);
 });
 (window as unknown as { game: Game }).game = game;
