@@ -15,20 +15,19 @@ const cssHref = html.match(/<link rel="stylesheet"[^>]*href="(\.\/assets\/[^"]+\
 const css = await readFile(path.join(DIST, cssHref), 'utf8');
 const script = html.match(/<script type="module"[^>]*><\/script>/)[0];
 const body = html.match(/<body>([\s\S]*)<\/body>/)[1].replace(/<script type="module"[^>]*><\/script>/, '').trim();
-const page = `${title}\n<meta name="theme-color" content="#040507">\n${fonts}\n<style>\n${css}\n</style>\n${body}\n<script>window.__SW_MODEL_EXT = 'json';</script>\n${script}\n`;
+const page = `${title}\n<meta name="theme-color" content="#040507">\n${fonts}\n<style>\n${css}\n</style>\n${body}\n<script>window.__SW_MODEL_EXT = 'json'; try { window.createImageBitmap = undefined; } catch (e) {}</script>\n${script}\n`;
 
-// .glb não é servido pelo Artifact: cada modelo vira glTF JSON com buffers e imagens em data: URI
+// O visualizador do Artifact bloqueia fetch(data:) e WebAssembly (CSP). Então cada modelo vira
+// um .json com o GLB em base64, já sem compressão meshopt (que precisaria de WebAssembly).
 await MeshoptEncoder.ready; await MeshoptDecoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder });
 const MD = path.join(DIST, 'assets', 'models');
 for (const f of await readdir(MD)) {
   if (!f.endsWith('.glb')) continue;
   const doc = await io.read(path.join(MD, f));
-  const { json, resources } = await io.writeJSON(doc, { format: 'json' });
-  const mime = (u) => u.endsWith('.png') ? 'image/png' : u.endsWith('.jpg') || u.endsWith('.jpeg') ? 'image/jpeg' : u.endsWith('.webp') ? 'image/webp' : 'application/octet-stream';
-  for (const b of json.buffers ?? []) if (b.uri && resources[b.uri]) b.uri = `data:application/octet-stream;base64,${Buffer.from(resources[b.uri]).toString('base64')}`;
-  for (const im of json.images ?? []) if (im.uri && resources[im.uri]) im.uri = `data:${im.mimeType ?? mime(im.uri)};base64,${Buffer.from(resources[im.uri]).toString('base64')}`;
-  await writeFile(path.join(MD, f.replace(/\.glb$/, '.json')), JSON.stringify(json));
+  for (const e of doc.getRoot().listExtensionsUsed()) if (e.extensionName === 'EXT_meshopt_compression') e.dispose();
+  const glb = await io.writeBinary(doc);
+  await writeFile(path.join(MD, f.replace(/\.glb$/, '.json')), JSON.stringify({ glb: Buffer.from(glb).toString('base64') }));
 }
 await writeFile(path.join(DIST, 'artifact.html'), page);
 // lista de arquivos a publicar junto

@@ -37,7 +37,7 @@ export async function loadAll(audioCtx: AudioContext, onProgress: (f: number, la
   if (!mr.ok) throw new Error(`manifest ${mr.status} ${mr.url}`);
   const manifest = await mr.json();
   const gltf = new GLTFLoader();
-  gltf.setMeshoptDecoder(MeshoptDecoder);
+  if (MODEL_EXT === 'glb') gltf.setMeshoptDecoder(MeshoptDecoder);
   const texLoader = new THREE.TextureLoader();
 
   const jobs: { w: number; label: string; run: () => Promise<void> }[] = [];
@@ -46,7 +46,14 @@ export async function loadAll(audioCtx: AudioContext, onProgress: (f: number, la
   const sounds: Partial<Record<SoundKey, AudioBuffer>> = {};
 
   for (const k of MODEL_KEYS) {
-    jobs.push({ w: manifest.models[k]?.kb ?? 200, label: 'modelos', run: async () => { models[k] = await gltf.loadAsync(`${BASE}models/${k}.${MODEL_EXT}`); } });
+    jobs.push({ w: manifest.models[k]?.kb ?? 200, label: 'modelos', run: async () => { if (MODEL_EXT === 'glb') { models[k] = await gltf.loadAsync(`${BASE}models/${k}.glb`); return; }
+      // versão Artifact: GLB em base64 dentro de um .json
+      const r = await fetch(`${BASE}models/${k}.json`);
+      if (!r.ok) throw new Error(`${k}.json ${r.status}`);
+      const b64: string = (await r.json()).glb;
+      const bin = atob(b64); const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      models[k] = await gltf.parseAsync(u8.buffer, `${BASE}models/`); } });
   }
   for (const t of ['ground', 'ground2']) for (const m of ['diff', 'nor', 'rough']) {
     jobs.push({ w: 150, label: 'texturas', run: async () => {
