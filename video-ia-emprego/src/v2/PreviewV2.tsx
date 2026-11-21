@@ -62,7 +62,6 @@ export const PreviewV2: React.FC = () => {
   // motion blur real (sub-quadros, obturador 180°) só nos movimentos rápidos
   const fast = [
     [1.28, 1.95],
-    [2.36, 2.62],
     [3.98, 4.4],
     [5.95, 6.5],
   ].some(([a, b]) => t >= a && t <= b);

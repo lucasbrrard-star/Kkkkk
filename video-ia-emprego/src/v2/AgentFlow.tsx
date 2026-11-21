@@ -324,7 +324,7 @@ export const AgentFlowScene: React.FC = () => {
         </div>
         {/* conteúdo do cartão original sumindo durante a expansão */}
         {m < 0.6 ? (
-          <div style={{position: 'absolute', left: 0, top: 0, width: 600, height: 300, transform: `scale(${pw / 600}, ${pw / 600})`, transformOrigin: '0 0', opacity: 1 - prog(t, T_MORPH0, T_MORPH0 + 0.14)}}>
+          <div style={{position: 'absolute', left: 0, top: 0, width: 600, height: 300, transform: `scale(${pw / 600}, ${pw / 600})`, transformOrigin: '0 0', opacity: 1 - prog(t, T_MORPH0, T_MORPH0 + 0.07)}}>
             <NotificationCard t={t} />
           </div>
         ) : null}
