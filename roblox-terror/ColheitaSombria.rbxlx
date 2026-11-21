@@ -1,0 +1,4663 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+	<External>null</External>
+	<External>nil</External>
+	<Item class="ReplicatedStorage" referent="RBX0">
+		<Properties>
+			<string name="Name">ReplicatedStorage</string>
+		</Properties>
+		<Item class="Folder" referent="RBX1">
+			<Properties>
+				<string name="Name">Shared</string>
+			</Properties>
+			<Item class="ModuleScript" referent="RBX2">
+				<Properties>
+					<string name="Name">Config</string>
+					<ProtectedString name="Source"><![CDATA[--!strict
+-- Colheita Sombria — configurações gerais do jogo.
+-- Ajuste os números aqui para balancear sem mexer no resto do código.
+
+local Config = {}
+
+Config.GAME_NAME = "Colheita Sombria"
+Config.KILLER_NAME = "O Espantalho"
+
+-- Ciclo de partida -------------------------------------------------------
+Config.INTERMISSION_TIME = 30 -- segundos de votação entre as partidas
+Config.ROUND_TIME = 180 -- duração máxima de uma partida
+Config.KILLER_RELEASE_DELAY = 8 -- segundos que o assassino fica preso no início
+Config.RESULT_TIME = 7 -- tempo mostrando o resultado antes de voltar ao lobby
+Config.RESPAWN_TIME = 3
+Config.MIN_PLAYERS_FOR_PVP = 2 -- com menos que isso o assassino vira um bot
+Config.SOLO_BOT = true -- permite jogar sozinho contra um Espantalho controlado pelo computador
+Config.VOTE_OPTIONS = 4 -- quantos quadrados de votação existem no lobby
+
+-- Posições no mundo --------------------------------------------------------
+Config.LOBBY_CENTER = Vector3.new(0, 0, 0)
+Config.MAP_CENTER = Vector3.new(0, 0, 4000)
+
+-- Sobreviventes ----------------------------------------------------------
+Config.Survivor = {
+	Health = 100,
+	WalkSpeed = 12,
+	SprintSpeed = 24,
+	HurtBoostSpeed = 28, -- velocidade extra logo depois de levar um golpe
+	HurtBoostTime = 1.6,
+	MaxStamina = 100,
+	StaminaDrain = 14, -- por segundo correndo
+	StaminaRegen = 18, -- por segundo descansando
+	RegenDelay = 1.2,
+	LanternCooldown = 28,
+	LanternRange = 22,
+	LanternStun = 2.5,
+}
+
+-- Assassino ----------------------------------------------------------------
+Config.Killer = {
+	WalkSpeed = 19,
+	AttackDamage = 30,
+	AttackCooldown = 1.4,
+	AttackRange = 8,
+	DashSpeed = 34,
+	DashTime = 1.4,
+	DashCooldown = 15,
+	HowlCooldown = 30,
+	HowlDuration = 5,
+}
+
+-- Geradores (objetivo dos sobreviventes) ----------------------------------
+Config.Generator = {
+	Count = 5,
+	StepPercent = 20, -- cada "segurar E" conserta essa porcentagem
+	HoldDuration = 1.6,
+	TimeReduction = 20, -- segundos tirados do relógio a cada gerador consertado
+}
+
+-- Distância em que os sobreviventes sentem o "raio de terror"
+Config.TERROR_RADIUS = 55
+
+-- Sons (opcional). Coloque IDs de áudio do seu inventário, ex: "rbxassetid://123".
+-- Deixe "" para desativar.
+Config.Sounds = {
+	LobbyAmbience = "",
+	RoundAmbience = "",
+	Chase = "",
+	Attack = "rbxasset://sounds/swordslash.wav",
+	GeneratorDone = "rbxasset://sounds/electronicpingshort.wav",
+}
+
+return Config
+]]></ProtectedString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX3">
+				<Properties>
+					<string name="Name">Remotes</string>
+					<ProtectedString name="Source"><![CDATA[--!strict
+-- Cria (no servidor) ou espera (no cliente) os RemoteEvents do jogo.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local NAMES = {
+	"Action", -- cliente -> servidor: ações do jogador (correr, atacar, habilidades)
+	"Notify", -- servidor -> cliente: mensagens rápidas na tela
+	"Reveal", -- servidor -> assassino: destacar sobreviventes
+	"Result", -- servidor -> todos: resultado da partida
+}
+
+local folder: Instance
+if RunService:IsServer() then
+	local existing = ReplicatedStorage:FindFirstChild("Remotes")
+	if existing then
+		folder = existing
+	else
+		folder = Instance.new("Folder")
+		folder.Name = "Remotes"
+		folder.Parent = ReplicatedStorage
+	end
+	for _, name in NAMES do
+		if not folder:FindFirstChild(name) then
+			local remote = Instance.new("RemoteEvent")
+			remote.Name = name
+			remote.Parent = folder
+		end
+	end
+else
+	folder = ReplicatedStorage:WaitForChild("Remotes")
+end
+
+local Remotes = {}
+
+function Remotes.get(name: string): RemoteEvent
+	return folder:WaitForChild(name) :: RemoteEvent
+end
+
+return Remotes
+]]></ProtectedString>
+				</Properties>
+			</Item>
+		</Item>
+	</Item>
+	<Item class="ServerScriptService" referent="RBX4">
+		<Properties>
+			<string name="Name">ServerScriptService</string>
+		</Properties>
+		<Item class="Folder" referent="RBX5">
+			<Properties>
+				<string name="Name">Server</string>
+			</Properties>
+			<Item class="Script" referent="RBX6">
+				<Properties>
+					<string name="Name">Main</string>
+					<ProtectedString name="Source"><![CDATA[-- Colheita Sombria — script principal do servidor.
+-- Monta o lobby, cuida dos jogadores e inicia o ciclo de partidas.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Personagens só nascem depois que o lobby estiver pronto
+Players.CharacterAutoLoads = false
+-- Shift é usado para correr, então desligamos o "Shift Lock"
+pcall(function()
+	game:GetService("StarterPlayer").EnableMouseLockOption = false
+end)
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+require(Shared:WaitForChild("Remotes")) -- cria os RemoteEvents
+
+local Modules = script.Parent:WaitForChild("Modules")
+local Atmosphere = require(Modules.Atmosphere)
+local Lobby = require(Modules.Lobby)
+local RoundManager = require(Modules.RoundManager)
+local Voting = require(Modules.Voting)
+
+Atmosphere.apply("Lobby", true)
+local lobby = Lobby.build()
+Voting.setup(lobby.pads)
+ReplicatedStorage:SetAttribute("LobbyReady", true)
+
+local function setupPlayer(player: Player)
+	local stats = Instance.new("Folder")
+	stats.Name = "leaderstats"
+	stats.Parent = player
+	local wins = Instance.new("IntValue")
+	wins.Name = "Vitorias"
+	wins.Parent = stats
+
+	player:SetAttribute("Role", "Lobby")
+	player:SetAttribute("Chance", 1)
+	player:SetAttribute("Vote", "")
+
+	player.CharacterAdded:Connect(function(character)
+		player:SetAttribute("Role", "Lobby")
+		local humanoid = character:WaitForChild("Humanoid") :: Humanoid
+		humanoid.Died:Connect(function()
+			task.delay(Config.RESPAWN_TIME, function()
+				-- só renasce se ainda for o mesmo personagem (evita renascer duas vezes)
+				if player.Parent and player.Character == character then
+					player:LoadCharacter()
+				end
+			end)
+		end)
+	end)
+	player:LoadCharacter()
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+for _, p in Players:GetPlayers() do
+	task.spawn(setupPlayer, p)
+end
+
+RoundManager.run()
+]]></ProtectedString>
+				</Properties>
+			</Item>
+			<Item class="Folder" referent="RBX7">
+				<Properties>
+					<string name="Name">Modules</string>
+				</Properties>
+				<Item class="ModuleScript" referent="RBX8">
+					<Properties>
+						<string name="Name">Atmosphere</string>
+						<ProtectedString name="Source"><![CDATA[-- Atmosphere: iluminação de terror (noite, neblina e cores) para o lobby e cada mapa.
+
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+
+local Atmosphere = {}
+
+type Preset = {
+	ClockTime: number,
+	Brightness: number,
+	Ambient: Color3,
+	OutdoorAmbient: Color3,
+	Density: number,
+	Haze: number,
+	AtmosColor: Color3,
+	Decay: Color3,
+	Tint: Color3,
+	Saturation: number,
+	Contrast: number,
+}
+
+local rgb = Color3.fromRGB
+
+local PRESETS: { [string]: Preset } = {
+	Lobby = {
+		ClockTime = 0.3,
+		Brightness = 1.4,
+		Ambient = rgb(62, 56, 70),
+		OutdoorAmbient = rgb(78, 72, 92),
+		Density = 0.36,
+		Haze = 1.8,
+		AtmosColor = rgb(120, 115, 130),
+		Decay = rgb(70, 55, 65),
+		Tint = rgb(228, 222, 238),
+		Saturation = -0.3,
+		Contrast = 0.12,
+	},
+	Milharal = {
+		ClockTime = 0,
+		Brightness = 1.2,
+		Ambient = rgb(58, 60, 44),
+		OutdoorAmbient = rgb(72, 76, 56),
+		Density = 0.42,
+		Haze = 2.2,
+		AtmosColor = rgb(130, 135, 100),
+		Decay = rgb(70, 72, 40),
+		Tint = rgb(232, 236, 200),
+		Saturation = -0.25,
+		Contrast = 0.15,
+	},
+	Celeiro = {
+		ClockTime = 18.3,
+		Brightness = 1.1,
+		Ambient = rgb(70, 46, 42),
+		OutdoorAmbient = rgb(96, 60, 52),
+		Density = 0.38,
+		Haze = 2.4,
+		AtmosColor = rgb(150, 100, 90),
+		Decay = rgb(110, 50, 40),
+		Tint = rgb(240, 214, 205),
+		Saturation = -0.15,
+		Contrast = 0.18,
+	},
+	Vila = {
+		ClockTime = 23.5,
+		Brightness = 1.2,
+		Ambient = rgb(56, 50, 72),
+		OutdoorAmbient = rgb(70, 62, 96),
+		Density = 0.45,
+		Haze = 2.4,
+		AtmosColor = rgb(100, 90, 130),
+		Decay = rgb(60, 40, 80),
+		Tint = rgb(218, 208, 238),
+		Saturation = -0.3,
+		Contrast = 0.15,
+	},
+	Cemiterio = {
+		ClockTime = 1,
+		Brightness = 1.5,
+		Ambient = rgb(48, 56, 72),
+		OutdoorAmbient = rgb(64, 76, 98),
+		Density = 0.4,
+		Haze = 2,
+		AtmosColor = rgb(90, 105, 130),
+		Decay = rgb(40, 50, 80),
+		Tint = rgb(204, 216, 242),
+		Saturation = -0.4,
+		Contrast = 0.2,
+	},
+	Floresta = {
+		ClockTime = 2,
+		Brightness = 1.1,
+		Ambient = rgb(44, 56, 46),
+		OutdoorAmbient = rgb(56, 72, 60),
+		Density = 0.55,
+		Haze = 2.8,
+		AtmosColor = rgb(70, 90, 75),
+		Decay = rgb(40, 60, 45),
+		Tint = rgb(205, 226, 208),
+		Saturation = -0.35,
+		Contrast = 0.15,
+	},
+	Moinho = {
+		ClockTime = 17.9,
+		Brightness = 1.3,
+		Ambient = rgb(76, 54, 44),
+		OutdoorAmbient = rgb(104, 72, 58),
+		Density = 0.34,
+		Haze = 2,
+		AtmosColor = rgb(150, 110, 90),
+		Decay = rgb(120, 60, 40),
+		Tint = rgb(242, 220, 200),
+		Saturation = -0.15,
+		Contrast = 0.15,
+	},
+}
+
+local function getOrCreate(className: string, name: string): Instance
+	local existing = Lighting:FindFirstChild(name)
+	if existing and existing:IsA(className) then
+		return existing
+	end
+	local inst = Instance.new(className)
+	inst.Name = name
+	inst.Parent = Lighting
+	return inst
+end
+
+local atmos = getOrCreate("Atmosphere", "AtmosferaTerror") :: Atmosphere
+local cc = getOrCreate("ColorCorrectionEffect", "CorTerror") :: ColorCorrectionEffect
+local bloom = getOrCreate("BloomEffect", "BrilhoTerror") :: BloomEffect
+bloom.Intensity = 0.6
+bloom.Size = 30
+bloom.Threshold = 1.6
+
+function Atmosphere.apply(name: string, instant: boolean?)
+	local p = PRESETS[name] or PRESETS.Lobby
+	Lighting.GlobalShadows = true
+	Lighting.EnvironmentDiffuseScale = 0.2
+	Lighting.EnvironmentSpecularScale = 0.3
+	local t = if instant then 0 else 2
+	local info = TweenInfo.new(t, Enum.EasingStyle.Sine)
+	Lighting.ClockTime = p.ClockTime
+	TweenService:Create(Lighting, info, {
+		Brightness = p.Brightness,
+		Ambient = p.Ambient,
+		OutdoorAmbient = p.OutdoorAmbient,
+	}):Play()
+	TweenService:Create(atmos, info, {
+		Density = p.Density,
+		Haze = p.Haze,
+		Color = p.AtmosColor,
+		Decay = p.Decay,
+		Glare = 0,
+		Offset = 0.1,
+	}):Play()
+	TweenService:Create(cc, info, {
+		TintColor = p.Tint,
+		Saturation = p.Saturation,
+		Contrast = p.Contrast,
+		Brightness = -0.02,
+	}):Play()
+end
+
+return Atmosphere
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX9">
+					<Properties>
+						<string name="Name">Build</string>
+						<ProtectedString name="Source"><![CDATA[-- Build: funções para montar o cenário só com peças (sem precisar de modelos da Toolbox).
+-- Tudo é criado por código, então o lugar funciona logo que você aperta Play.
+
+local CollectionService = game:GetService("CollectionService")
+
+local Build = {}
+
+-- Paleta usada no jogo inteiro ------------------------------------------------
+Build.Colors = {
+	Wood = Color3.fromRGB(92, 64, 44),
+	DarkWood = Color3.fromRGB(58, 40, 28),
+	OldWood = Color3.fromRGB(120, 104, 86),
+	BarnRed = Color3.fromRGB(120, 32, 28),
+	Trim = Color3.fromRGB(200, 194, 180),
+	Iron = Color3.fromRGB(38, 38, 42),
+	Stone = Color3.fromRGB(96, 96, 100),
+	DarkStone = Color3.fromRGB(60, 60, 66),
+	Hay = Color3.fromRGB(196, 160, 80),
+	Wheat = Color3.fromRGB(186, 150, 72),
+	Corn = Color3.fromRGB(110, 118, 52),
+	CornTop = Color3.fromRGB(170, 150, 90),
+	Leaves = Color3.fromRGB(46, 62, 38),
+	DeadLeaves = Color3.fromRGB(84, 70, 44),
+	Pumpkin = Color3.fromRGB(204, 98, 26),
+	LampLight = Color3.fromRGB(255, 180, 100),
+	Burlap = Color3.fromRGB(150, 120, 80),
+	Rust = Color3.fromRGB(110, 70, 44),
+}
+local C = Build.Colors
+
+local function apply(inst: Instance, props: { [string]: any })
+	for key, value in props do
+		if key ~= "Parent" and key ~= "ClassName" and key ~= "Tags" and key ~= "Attributes" then
+			(inst :: any)[key] = value
+		end
+	end
+	if props.Tags then
+		for _, tag in props.Tags do
+			CollectionService:AddTag(inst, tag)
+		end
+	end
+	if props.Attributes then
+		for name, value in props.Attributes do
+			inst:SetAttribute(name, value)
+		end
+	end
+	inst.Parent = props.Parent
+	return inst
+end
+
+function Build.part(props: { [string]: any }): BasePart
+	local p = Instance.new(props.ClassName or "Part") :: BasePart
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Material = Enum.Material.SmoothPlastic
+	return apply(p, props) :: BasePart
+end
+
+function Build.model(name: string, parent: Instance?): Model
+	local m = Instance.new("Model")
+	m.Name = name
+	m.Parent = parent
+	return m
+end
+
+-- Caixa simples
+function Build.box(parent: Instance, size: Vector3, cf: CFrame, color: Color3, material: Enum.Material?, extra: { [string]: any }?)
+	local props: { [string]: any } = {
+		Parent = parent,
+		Size = size,
+		CFrame = cf,
+		Color = color,
+		Material = material or Enum.Material.SmoothPlastic,
+	}
+	if extra then
+		for k, v in extra do
+			props[k] = v
+		end
+	end
+	return Build.part(props)
+end
+
+-- Cilindro em pé (o eixo do cilindro segue o "Up" do CFrame)
+function Build.cyl(parent: Instance, cf: CFrame, height: number, diameter: number, color: Color3, material: Enum.Material?)
+	return Build.part({
+		Parent = parent,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(height, diameter, diameter),
+		CFrame = cf * CFrame.Angles(0, 0, math.rad(90)),
+		Color = color,
+		Material = material or Enum.Material.SmoothPlastic,
+	})
+end
+
+-- Cilindro deitado (eixo segue o "Right" do CFrame)
+function Build.cylX(parent: Instance, cf: CFrame, length: number, diameter: number, color: Color3, material: Enum.Material?)
+	return Build.part({
+		Parent = parent,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(length, diameter, diameter),
+		CFrame = cf,
+		Color = color,
+		Material = material or Enum.Material.SmoothPlastic,
+	})
+end
+
+function Build.ball(parent: Instance, pos: Vector3, diameter: number, color: Color3, material: Enum.Material?)
+	return Build.part({
+		Parent = parent,
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(diameter, diameter, diameter),
+		CFrame = CFrame.new(pos),
+		Color = color,
+		Material = material or Enum.Material.SmoothPlastic,
+	})
+end
+
+-- Elipsoide (usa SpecialMesh do tipo Sphere, não precisa de asset)
+function Build.ellipsoid(parent: Instance, size: Vector3, cf: CFrame, color: Color3, material: Enum.Material?)
+	local p = Build.box(parent, size, cf, color, material)
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = p
+	return p
+end
+
+-- Barra entre dois pontos
+function Build.beam(parent: Instance, a: Vector3, b: Vector3, thickness: number, color: Color3, material: Enum.Material?)
+	local length = (b - a).Magnitude
+	return Build.box(
+		parent,
+		Vector3.new(thickness, thickness, length),
+		CFrame.lookAt((a + b) / 2, b),
+		color,
+		material
+	)
+end
+
+-- Luz pontual com tag de "piscar"
+function Build.light(parent: BasePart, color: Color3, range: number, brightness: number, flicker: boolean?)
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Range = range
+	light.Brightness = brightness
+	light.Shadows = true
+	light.Parent = parent
+	if flicker then
+		CollectionService:AddTag(parent, "Flicker")
+	end
+	return light
+end
+
+---------------------------------------------------------------------------------
+-- Cercas e grades
+---------------------------------------------------------------------------------
+
+-- Cerca de madeira entre dois pontos no chão
+function Build.fence(parent: Instance, a: Vector3, b: Vector3, height: number?, color: Color3?)
+	local h = height or 4
+	local col = color or C.OldWood
+	local model = Build.model("Cerca", parent)
+	local dir = b - a
+	local length = dir.Magnitude
+	local posts = math.max(1, math.floor(length / 6))
+	for i = 0, posts do
+		local p = a + dir * (i / posts)
+		Build.box(model, Vector3.new(0.7, h + 0.6, 0.7), CFrame.new(p + Vector3.new(0, (h + 0.6) / 2, 0)), col, Enum.Material.Wood)
+	end
+	for _, y in { h * 0.45, h * 0.85 } do
+		Build.beam(model, a + Vector3.new(0, y, 0), b + Vector3.new(0, y, 0), 0.4, col, Enum.Material.Wood)
+	end
+	return model
+end
+
+-- Grade de ferro (cercado) entre dois pontos
+function Build.bars(parent: Instance, a: Vector3, b: Vector3, height: number, spacing: number?)
+	local model = Build.model("Grade", parent)
+	local gap = spacing or 1.6
+	local dir = b - a
+	local length = dir.Magnitude
+	local count = math.max(1, math.floor(length / gap))
+	for i = 0, count do
+		local p = a + dir * (i / count)
+		Build.cyl(model, CFrame.new(p + Vector3.new(0, height / 2, 0)), height, 0.32, C.Iron, Enum.Material.CorrodedMetal)
+		-- ponta de lança
+		Build.box(
+			model,
+			Vector3.new(0.35, 0.6, 0.35),
+			CFrame.new(p + Vector3.new(0, height + 0.25, 0)) * CFrame.Angles(0, math.rad(45), math.rad(45)),
+			C.Iron,
+			Enum.Material.CorrodedMetal
+		)
+	end
+	for _, y in { 0.4, height * 0.5, height - 0.6 } do
+		Build.beam(model, a + Vector3.new(0, y, 0), b + Vector3.new(0, y, 0), 0.35, C.Iron, Enum.Material.CorrodedMetal)
+	end
+	return model
+end
+
+-- Parede invisível (bloqueia o jogador mas ninguém vê)
+function Build.invisibleWall(parent: Instance, size: Vector3, cf: CFrame)
+	return Build.part({
+		Parent = parent,
+		Name = "ParedeInvisivel",
+		Size = size,
+		CFrame = cf,
+		Transparency = 1,
+		CanCollide = true,
+		CastShadow = false,
+	})
+end
+
+-- Caixa de paredes invisíveis ao redor de um retângulo (com teto)
+function Build.invisibleBox(parent: Instance, center: Vector3, sizeX: number, sizeZ: number, height: number)
+	local folder = Instance.new("Folder")
+	folder.Name = "ParedesInvisiveis"
+	folder.Parent = parent
+	local t = 4
+	local y = center.Y + height / 2
+	Build.invisibleWall(folder, Vector3.new(sizeX + t * 2, height, t), CFrame.new(center.X, y, center.Z - sizeZ / 2 - t / 2))
+	Build.invisibleWall(folder, Vector3.new(sizeX + t * 2, height, t), CFrame.new(center.X, y, center.Z + sizeZ / 2 + t / 2))
+	Build.invisibleWall(folder, Vector3.new(t, height, sizeZ), CFrame.new(center.X - sizeX / 2 - t / 2, y, center.Z))
+	Build.invisibleWall(folder, Vector3.new(t, height, sizeZ), CFrame.new(center.X + sizeX / 2 + t / 2, y, center.Z))
+	Build.invisibleWall(folder, Vector3.new(sizeX + t * 2, t, sizeZ + t * 2), CFrame.new(center.X, center.Y + height + t / 2, center.Z))
+	return folder
+end
+
+---------------------------------------------------------------------------------
+-- Construções
+---------------------------------------------------------------------------------
+
+-- Parede com (ou sem) abertura de porta. cf = centro da base da parede, eixo X = comprimento.
+local function wall(parent: Instance, cf: CFrame, length: number, h: number, t: number, color: Color3, mat: Enum.Material, doorW: number?, doorH: number?)
+	if not doorW then
+		Build.box(parent, Vector3.new(length, h, t), cf * CFrame.new(0, h / 2, 0), color, mat)
+		return
+	end
+	local dh = math.min(doorH or 8, h - 1)
+	local side = (length - doorW) / 2
+	Build.box(parent, Vector3.new(side, h, t), cf * CFrame.new(-length / 2 + side / 2, h / 2, 0), color, mat)
+	Build.box(parent, Vector3.new(side, h, t), cf * CFrame.new(length / 2 - side / 2, h / 2, 0), color, mat)
+	Build.box(parent, Vector3.new(doorW, h - dh, t), cf * CFrame.new(0, dh + (h - dh) / 2, 0), color, mat)
+end
+
+-- Telhado em "V" feito com duas WedgeParts. Cumeeira ao longo do eixo Z local.
+function Build.roof(parent: Instance, cf: CFrame, w: number, d: number, rh: number, color: Color3, mat: Enum.Material?, overhang: number?)
+	local oh = overhang or 1.5
+	local halfW = w / 2 + oh
+	local m = mat or Enum.Material.WoodPlanks
+	-- metade esquerda: lado alto aponta para +X (centro)
+	Build.part({
+		Parent = parent,
+		ClassName = "WedgePart",
+		Size = Vector3.new(d + oh * 2, rh, halfW),
+		CFrame = cf * CFrame.fromMatrix(Vector3.new(-halfW / 2, rh / 2, 0), Vector3.new(0, 0, -1), Vector3.new(0, 1, 0)),
+		Color = color,
+		Material = m,
+	})
+	Build.part({
+		Parent = parent,
+		ClassName = "WedgePart",
+		Size = Vector3.new(d + oh * 2, rh, halfW),
+		CFrame = cf * CFrame.fromMatrix(Vector3.new(halfW / 2, rh / 2, 0), Vector3.new(0, 0, 1), Vector3.new(0, 1, 0)),
+		Color = color,
+		Material = m,
+	})
+end
+
+export type BuildingOptions = {
+	wallColor: Color3?,
+	wallMat: Enum.Material?,
+	roofColor: Color3?,
+	roofMat: Enum.Material?,
+	roofH: number?,
+	doors: { [string]: boolean }?, -- front / back / left / right
+	doorW: number?,
+	doorH: number?,
+	windows: boolean?,
+	litWindows: boolean?,
+	floorColor: Color3?,
+	trim: Color3?,
+	name: string?,
+}
+
+-- Construção oca com portas (a frente fica no -Z do CFrame, igual ao LookVector)
+function Build.building(parent: Instance, cf: CFrame, w: number, d: number, h: number, opts: BuildingOptions?)
+	local o: BuildingOptions = opts or {}
+	local model = Build.model(o.name or "Casa", parent)
+	local t = 1
+	local wc = o.wallColor or C.OldWood
+	local wm = o.wallMat or Enum.Material.WoodPlanks
+	local doors = o.doors or { front = true }
+	local dw, dh = o.doorW or 6, o.doorH or 8
+
+	Build.box(model, Vector3.new(w, 0.4, d), cf * CFrame.new(0, 0.2, 0), o.floorColor or C.DarkWood, Enum.Material.WoodPlanks)
+
+	wall(model, cf * CFrame.new(0, 0, -d / 2 + t / 2), w, h, t, wc, wm, if doors.front then dw else nil, dh)
+	wall(model, cf * CFrame.new(0, 0, d / 2 - t / 2), w, h, t, wc, wm, if doors.back then dw else nil, dh)
+	wall(model, cf * CFrame.new(-w / 2 + t / 2, 0, 0) * CFrame.Angles(0, math.rad(90), 0), d - t * 2, h, t, wc, wm, if doors.left then dw else nil, dh)
+	wall(model, cf * CFrame.new(w / 2 - t / 2, 0, 0) * CFrame.Angles(0, math.rad(90), 0), d - t * 2, h, t, wc, wm, if doors.right then dw else nil, dh)
+
+	-- Cantos com acabamento
+	if o.trim then
+		for _, sx in { -1, 1 } do
+			for _, sz in { -1, 1 } do
+				Build.box(model, Vector3.new(1.3, h, 1.3), cf * CFrame.new(sx * (w / 2 - 0.4), h / 2, sz * (d / 2 - 0.4)), o.trim, Enum.Material.Wood)
+			end
+		end
+	end
+
+	-- Janelas (decoração por fora das paredes laterais)
+	if o.windows ~= false then
+		local winColor = if o.litWindows then Color3.fromRGB(255, 170, 80) else Color3.fromRGB(20, 22, 28)
+		local winMat = if o.litWindows then Enum.Material.Neon else Enum.Material.Glass
+		local count = math.max(1, math.floor(d / 10))
+		for i = 1, count do
+			local z = -d / 2 + (i - 0.5) * (d / count)
+			for _, sx in { -1, 1 } do
+				local side = if sx < 0 then "left" else "right"
+				if not (doors[side] and math.abs(z) < dw) then
+					local win = Build.box(
+						model,
+						Vector3.new(0.2, 3, 3),
+						cf * CFrame.new(sx * (w / 2 + 0.05), h * 0.55, z),
+						winColor,
+						winMat
+					)
+					if o.litWindows then
+						Build.light(win, C.LampLight, 14, 0.8, true)
+					end
+					-- moldura
+					Build.box(model, Vector3.new(0.3, 0.4, 3.6), cf * CFrame.new(sx * (w / 2 + 0.1), h * 0.55 + 1.7, z), C.DarkWood, Enum.Material.Wood)
+					Build.box(model, Vector3.new(0.3, 0.4, 3.6), cf * CFrame.new(sx * (w / 2 + 0.1), h * 0.55 - 1.7, z), C.DarkWood, Enum.Material.Wood)
+				end
+			end
+		end
+	end
+
+	Build.roof(model, cf * CFrame.new(0, h, 0), w, d, o.roofH or math.max(4, w * 0.35), o.roofColor or C.DarkWood, o.roofMat)
+	return model
+end
+
+-- Celeiro vermelho clássico
+function Build.barn(parent: Instance, cf: CFrame, w: number, d: number, h: number, doors: { [string]: boolean }?)
+	local model = Build.building(parent, cf, w, d, h, {
+		name = "Celeiro",
+		wallColor = C.BarnRed,
+		wallMat = Enum.Material.WoodPlanks,
+		roofColor = Color3.fromRGB(52, 46, 44),
+		roofMat = Enum.Material.CorrodedMetal,
+		roofH = w * 0.4,
+		doors = doors or { front = true, back = true },
+		doorW = math.min(14, w * 0.4),
+		doorH = math.min(14, h - 3),
+		trim = C.Trim,
+		windows = false,
+	})
+	-- "X" branco das portas e janela do palheiro
+	local dw = math.min(14, w * 0.4)
+	for _, sz in { -1, 1 } do
+		local face = cf * CFrame.new(0, 0, sz * (d / 2 + 0.1))
+		Build.box(model, Vector3.new(dw + 1.5, 1, 0.3), face * CFrame.new(0, math.min(14, h - 3) + 0.5, 0), C.Trim, Enum.Material.Wood)
+		Build.box(model, Vector3.new(5, 4, 0.3), face * CFrame.new(0, h - 1.5, 0), Color3.fromRGB(16, 14, 14), Enum.Material.Wood)
+	end
+	return model
+end
+
+function Build.silo(parent: Instance, pos: Vector3, diameter: number, height: number)
+	local model = Build.model("Silo", parent)
+	Build.cyl(model, CFrame.new(pos + Vector3.new(0, height / 2, 0)), height, diameter, Color3.fromRGB(150, 150, 150), Enum.Material.CorrodedMetal)
+	Build.ball(model, pos + Vector3.new(0, height, 0), diameter, Color3.fromRGB(120, 120, 124), Enum.Material.CorrodedMetal)
+	for i = 1, 4 do
+		Build.cyl(model, CFrame.new(pos + Vector3.new(0, i * height / 5, 0)), 0.4, diameter + 0.3, C.Rust, Enum.Material.CorrodedMetal)
+	end
+	-- escada
+	for y = 1, height - 1, 2 do
+		Build.box(model, Vector3.new(1.6, 0.2, 0.2), CFrame.new(pos + Vector3.new(0, y, -diameter / 2 - 0.4)), C.Iron, Enum.Material.Metal)
+	end
+	return model
+end
+
+-- Moinho com pás que giram (o cliente gira tudo com a tag "Spin")
+function Build.windmill(parent: Instance, pos: Vector3, facing: Vector3?)
+	local model = Build.model("Moinho", parent)
+	local look = facing or Vector3.new(0, 0, -1)
+	local base = CFrame.lookAt(pos, pos + Vector3.new(look.X, 0, look.Z))
+	local levels = 5
+	local y = 0
+	for i = 0, levels - 1 do
+		local wdt = 16 - i * 2.2
+		local hgt = 6
+		Build.box(model, Vector3.new(wdt, hgt, wdt), base * CFrame.new(0, y + hgt / 2, 0), if i % 2 == 0 then C.OldWood else C.Wood, Enum.Material.WoodPlanks)
+		y += hgt
+	end
+	Build.box(model, Vector3.new(4, 7, 0.4), base * CFrame.new(0, 3.5, -8.05), C.DarkWood, Enum.Material.Wood) -- porta
+	Build.roof(model, base * CFrame.new(0, y, 0), 7, 7, 4, C.DarkWood, Enum.Material.WoodPlanks, 1)
+	local hub = base * CFrame.new(0, y - 2, -5)
+	Build.cylX(model, hub * CFrame.Angles(0, math.rad(90), 0), 3, 1.4, C.Iron, Enum.Material.CorrodedMetal)
+
+	local blades = Build.model("Pas", model)
+	for i = 0, 3 do
+		local rot = hub * CFrame.new(0, 0, -1.6) * CFrame.Angles(0, 0, i * math.pi / 2)
+		Build.box(blades, Vector3.new(0.6, 14, 0.4), rot * CFrame.new(0, 7.5, 0), C.DarkWood, Enum.Material.Wood)
+		Build.box(blades, Vector3.new(3.4, 11, 0.15), rot * CFrame.new(1.9, 8.5, 0), Color3.fromRGB(176, 166, 140), Enum.Material.Fabric)
+	end
+	Build.box(blades, Vector3.new(1.2, 1.2, 1), hub * CFrame.new(0, 0, -1.6), C.Iron, Enum.Material.Metal)
+	blades.WorldPivot = hub * CFrame.new(0, 0, -1.6)
+	blades:SetAttribute("Speed", 0.5)
+	CollectionService:AddTag(blades, "Spin")
+	return model
+end
+
+---------------------------------------------------------------------------------
+-- Natureza e objetos de fazenda
+---------------------------------------------------------------------------------
+
+function Build.tree(parent: Instance, pos: Vector3, rng: Random, kind: string?)
+	local model = Build.model("Arvore", parent)
+	local k = kind or (if rng:NextNumber() < 0.55 then "dead" else "leafy")
+	local h = rng:NextNumber(10, 20)
+	local trunkCol = if k == "dead" then Color3.fromRGB(52, 44, 38) else C.Wood
+	Build.cyl(model, CFrame.new(pos + Vector3.new(0, h / 2, 0)) * CFrame.Angles(rng:NextNumber(-0.05, 0.05), 0, rng:NextNumber(-0.05, 0.05)), h, rng:NextNumber(1.4, 2.4), trunkCol, Enum.Material.Wood)
+	if k == "dead" then
+		for _ = 1, rng:NextInteger(3, 5) do
+			local y = rng:NextNumber(h * 0.45, h * 0.95)
+			local ang = rng:NextNumber(0, math.pi * 2)
+			local len = rng:NextNumber(3, 7)
+			local from = pos + Vector3.new(0, y, 0)
+			local to = from + Vector3.new(math.cos(ang) * len, rng:NextNumber(1.5, 4), math.sin(ang) * len)
+			Build.beam(model, from, to, rng:NextNumber(0.4, 0.8), trunkCol, Enum.Material.Wood)
+			local to2 = to + Vector3.new(math.cos(ang + 0.7) * len * 0.4, rng:NextNumber(0.5, 2), math.sin(ang + 0.7) * len * 0.4)
+			Build.beam(model, to, to2, 0.3, trunkCol, Enum.Material.Wood)
+		end
+	elseif k == "pine" then
+		for i = 0, 3 do
+			local s = 10 - i * 2.2
+			Build.box(model, Vector3.new(s, 3, s), CFrame.new(pos + Vector3.new(0, h * 0.4 + i * 2.6, 0)) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0), Color3.fromRGB(28, 44, 32), Enum.Material.Grass)
+		end
+	else
+		local leaves = if rng:NextNumber() < 0.5 then C.Leaves else C.DeadLeaves
+		for _ = 1, rng:NextInteger(2, 4) do
+			local off = Vector3.new(rng:NextNumber(-3, 3), h + rng:NextNumber(-2, 2), rng:NextNumber(-3, 3))
+			Build.ball(model, pos + off, rng:NextNumber(6, 10), leaves, Enum.Material.Grass)
+		end
+	end
+	return model
+end
+
+function Build.rock(parent: Instance, pos: Vector3, rng: Random, scale: number?)
+	local s = scale or 1
+	return Build.box(
+		parent,
+		Vector3.new(rng:NextNumber(2, 6), rng:NextNumber(1.5, 4), rng:NextNumber(2, 6)) * s,
+		CFrame.new(pos) * CFrame.Angles(rng:NextNumber(-0.4, 0.4), rng:NextNumber(0, 6), rng:NextNumber(-0.4, 0.4)),
+		Color3.fromRGB(86, 86, 90),
+		Enum.Material.Slate
+	)
+end
+
+function Build.log(parent: Instance, pos: Vector3, rng: Random)
+	local cf = CFrame.new(pos + Vector3.new(0, 0.9, 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0)
+	return Build.cylX(parent, cf, rng:NextNumber(7, 12), 1.8, C.DarkWood, Enum.Material.Wood)
+end
+
+function Build.haybale(parent: Instance, cf: CFrame, stacked: boolean?)
+	local model = Build.model("Feno", parent)
+	Build.cylX(model, cf * CFrame.new(0, 2, 0), 5, 4, C.Hay, Enum.Material.Fabric)
+	if stacked then
+		Build.cylX(model, cf * CFrame.new(0, 5.8, 0), 5, 4, C.Hay, Enum.Material.Fabric)
+	end
+	return model
+end
+
+-- Bloco de feno retangular (bom para criar cobertura)
+function Build.hayblock(parent: Instance, cf: CFrame, layers: number?)
+	local model = Build.model("FenoBloco", parent)
+	for i = 0, (layers or 1) - 1 do
+		Build.box(model, Vector3.new(6, 3, 3.5), cf * CFrame.new(0, 1.5 + i * 3, 0) * CFrame.Angles(0, (i % 2) * 0.15, 0), C.Hay, Enum.Material.Fabric)
+	end
+	return model
+end
+
+function Build.pumpkin(parent: Instance, pos: Vector3, lit: boolean?, scale: number?)
+	local s = scale or 1
+	local model = Build.model("Abobora", parent)
+	local body = Build.ellipsoid(model, Vector3.new(3, 2.2, 3) * s, CFrame.new(pos + Vector3.new(0, 1.1 * s, 0)), C.Pumpkin, Enum.Material.SmoothPlastic)
+	Build.cyl(model, CFrame.new(pos + Vector3.new(0, 2.4 * s, 0)), 0.8 * s, 0.4 * s, Color3.fromRGB(60, 70, 30), Enum.Material.Wood)
+	if lit then
+		local face = CFrame.new(pos + Vector3.new(0, 1.2 * s, 0)) * CFrame.Angles(0, math.random() * math.pi * 2, 0)
+		for _, x in { -0.55, 0.55 } do
+			Build.box(model, Vector3.new(0.5, 0.5, 0.2) * s, face * CFrame.new(x * s, 0.35 * s, -1.42 * s) * CFrame.Angles(0, 0, math.rad(45)), Color3.fromRGB(255, 190, 70), Enum.Material.Neon)
+		end
+		Build.box(model, Vector3.new(1.3, 0.3, 0.2) * s, face * CFrame.new(0, -0.35 * s, -1.42 * s), Color3.fromRGB(255, 190, 70), Enum.Material.Neon)
+		Build.light(body, Color3.fromRGB(255, 140, 40), 12, 1.2, true)
+	end
+	return model
+end
+
+function Build.lamp(parent: Instance, pos: Vector3, color: Color3?, height: number?)
+	local model = Build.model("Poste", parent)
+	local h = height or 11
+	Build.cyl(model, CFrame.new(pos + Vector3.new(0, h / 2, 0)), h, 0.6, C.Iron, Enum.Material.CorrodedMetal)
+	Build.box(model, Vector3.new(0.4, 0.4, 2.4), CFrame.new(pos + Vector3.new(0, h - 0.2, -1)), C.Iron, Enum.Material.CorrodedMetal)
+	local bulb = Build.box(model, Vector3.new(1.1, 1.4, 1.1), CFrame.new(pos + Vector3.new(0, h - 1.2, -2)), color or C.LampLight, Enum.Material.Neon)
+	Build.box(model, Vector3.new(1.5, 0.3, 1.5), CFrame.new(pos + Vector3.new(0, h - 0.35, -2)), C.Iron, Enum.Material.Metal)
+	Build.light(bulb, color or C.LampLight, 26, 1.6, true)
+	return model
+end
+
+function Build.scarecrow(parent: Instance, cf: CFrame)
+	local model = Build.model("Espantalho", parent)
+	Build.box(model, Vector3.new(0.6, 9, 0.6), cf * CFrame.new(0, 4.5, 0), C.DarkWood, Enum.Material.Wood)
+	Build.box(model, Vector3.new(7, 0.5, 0.5), cf * CFrame.new(0, 6.6, 0), C.DarkWood, Enum.Material.Wood)
+	Build.box(model, Vector3.new(3, 3, 1.4), cf * CFrame.new(0, 5.8, 0), Color3.fromRGB(70, 60, 80), Enum.Material.Fabric)
+	Build.box(model, Vector3.new(6.4, 1.1, 1.2), cf * CFrame.new(0, 6.6, 0), Color3.fromRGB(70, 60, 80), Enum.Material.Fabric)
+	Build.ellipsoid(model, Vector3.new(2, 2.2, 2), cf * CFrame.new(0, 8.4, 0), C.Burlap, Enum.Material.Fabric)
+	for _, x in { -0.4, 0.4 } do
+		Build.box(model, Vector3.new(0.3, 0.3, 0.1), cf * CFrame.new(x, 8.6, -0.98), Color3.fromRGB(255, 40, 30), Enum.Material.Neon)
+	end
+	Build.box(model, Vector3.new(1, 0.08, 0.1), cf * CFrame.new(0, 8.0, -0.98), Color3.fromRGB(30, 20, 15), Enum.Material.Fabric)
+	Build.cyl(model, cf * CFrame.new(0, 9.4, 0), 0.2, 3.4, C.Hay, Enum.Material.Fabric)
+	Build.cyl(model, cf * CFrame.new(0, 9.9, 0), 1, 1.5, C.Hay, Enum.Material.Fabric)
+	-- palha saindo das mangas
+	for _, x in { -3.4, 3.4 } do
+		Build.box(model, Vector3.new(0.8, 0.9, 0.9), cf * CFrame.new(x, 6.4, 0) * CFrame.Angles(0, 0, 0.4), C.Hay, Enum.Material.Grass)
+	end
+	return model
+end
+
+function Build.tombstone(parent: Instance, cf: CFrame, rng: Random)
+	local model = Build.model("Tumulo", parent)
+	local col = Color3.fromRGB(rng:NextInteger(78, 110), rng:NextInteger(78, 110), rng:NextInteger(82, 112))
+	local tilt = CFrame.Angles(rng:NextNumber(-0.12, 0.12), 0, rng:NextNumber(-0.1, 0.1))
+	if rng:NextNumber() < 0.25 then
+		Build.box(model, Vector3.new(0.7, 4.2, 0.7), cf * CFrame.new(0, 2.1, 0) * tilt, col, Enum.Material.Slate)
+		Build.box(model, Vector3.new(2.6, 0.7, 0.7), cf * tilt * CFrame.new(0, 3.1, 0), col, Enum.Material.Slate)
+	else
+		Build.box(model, Vector3.new(2.6, 2.8, 0.8), cf * CFrame.new(0, 1.4, 0) * tilt, col, Enum.Material.Slate)
+		Build.part({
+			Parent = model,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.8, 2.6, 2.6),
+			CFrame = cf * CFrame.new(0, 2.8, 0) * tilt * CFrame.Angles(0, math.rad(90), 0),
+			Color = col,
+			Material = Enum.Material.Slate,
+		})
+	end
+	-- monte de terra
+	Build.box(model, Vector3.new(2.8, 0.5, 5.5), cf * CFrame.new(0, 0.25, 3.2), Color3.fromRGB(60, 46, 36), Enum.Material.Ground)
+	return model
+end
+
+-- Plantação em fileiras. kind = "wheat" (trigo) ou "corn" (milho)
+function Build.crops(parent: Instance, cf: CFrame, w: number, d: number, kind: string?, rowGap: number?)
+	local model = Build.model("Plantacao", parent)
+	local corn = kind == "corn"
+	local gap = rowGap or (if corn then 4 else 3)
+	local h = if corn then 8 else 3.2
+	local seg = if corn then 8 else 4
+	local rows = math.max(1, math.floor(w / gap))
+	for r = 0, rows - 1 do
+		local x = -w / 2 + (r + 0.5) * (w / rows)
+		local segs = math.max(1, math.floor(d / seg))
+		for s = 0, segs - 1 do
+			local z = -d / 2 + (s + 0.5) * (d / segs)
+			local hh = h * (0.85 + ((r * 7 + s * 13) % 5) * 0.06)
+			Build.box(model, Vector3.new(if corn then 1.4 else 1.1, hh, d / segs - 0.5), cf * CFrame.new(x, hh / 2, z), if corn then C.Corn else C.Wheat, Enum.Material.Grass, {
+				CanCollide = corn,
+				CastShadow = corn,
+			})
+			if corn then
+				Build.box(model, Vector3.new(0.8, 1, d / segs - 1), cf * CFrame.new(x, hh + 0.5, z), C.CornTop, Enum.Material.Grass, { CanCollide = false })
+			end
+		end
+	end
+	return model
+end
+
+function Build.tractor(parent: Instance, cf: CFrame)
+	local model = Build.model("Trator", parent)
+	local body = Color3.fromRGB(110, 34, 30)
+	Build.box(model, Vector3.new(4, 3, 8), cf * CFrame.new(0, 3.5, 0), body, Enum.Material.CorrodedMetal)
+	Build.box(model, Vector3.new(3.4, 2.4, 4), cf * CFrame.new(0, 3.9, -5.5), body, Enum.Material.CorrodedMetal)
+	Build.box(model, Vector3.new(4.4, 0.3, 4.4), cf * CFrame.new(0, 8.6, 2), Color3.fromRGB(40, 40, 40), Enum.Material.Metal)
+	for _, x in { -2, 2 } do
+		Build.box(model, Vector3.new(0.3, 3.6, 0.3), cf * CFrame.new(x, 6.8, 0.2), C.Iron, Enum.Material.Metal)
+		Build.box(model, Vector3.new(0.3, 3.6, 0.3), cf * CFrame.new(x, 6.8, 3.8), C.Iron, Enum.Material.Metal)
+	end
+	Build.cyl(model, cf * CFrame.new(1, 6.5, -6), 2.4, 0.4, C.Iron, Enum.Material.Metal)
+	for _, x in { -2.8, 2.8 } do
+		Build.cylX(model, cf * CFrame.new(x, 3, 2), 1.4, 6, Color3.fromRGB(26, 26, 26), Enum.Material.Rubber)
+		Build.cylX(model, cf * CFrame.new(x * 0.85, 1.4, -5.5), 1, 2.8, Color3.fromRGB(26, 26, 26), Enum.Material.Rubber)
+	end
+	return model
+end
+
+function Build.well(parent: Instance, pos: Vector3)
+	local model = Build.model("Poco", parent)
+	for i = 0, 7 do
+		local a = i * math.pi / 4
+		Build.box(model, Vector3.new(2.6, 3, 1), CFrame.new(pos) * CFrame.Angles(0, a, 0) * CFrame.new(0, 1.5, -3), Build.Colors.Stone, Enum.Material.Cobblestone)
+	end
+	Build.box(model, Vector3.new(5.4, 0.2, 5.4), CFrame.new(pos + Vector3.new(0, 0.5, 0)), Color3.fromRGB(10, 12, 16), Enum.Material.Slate)
+	for _, x in { -3.2, 3.2 } do
+		Build.box(model, Vector3.new(0.6, 7, 0.6), CFrame.new(pos + Vector3.new(x, 3.5, 0)), C.DarkWood, Enum.Material.Wood)
+	end
+	Build.cylX(model, CFrame.new(pos + Vector3.new(0, 5.6, 0)), 6.4, 0.6, C.Wood, Enum.Material.Wood)
+	Build.roof(model, CFrame.new(pos + Vector3.new(0, 7, 0)) * CFrame.Angles(0, math.rad(90), 0), 6, 8, 2.5, C.DarkWood, Enum.Material.WoodPlanks, 0.5)
+	Build.box(model, Vector3.new(1, 1.2, 1), CFrame.new(pos + Vector3.new(0, 3.6, 0)), C.Wood, Enum.Material.Wood)
+	return model
+end
+
+function Build.crate(parent: Instance, cf: CFrame, size: number?)
+	local s = size or 3
+	return Build.box(parent, Vector3.new(s, s, s), cf * CFrame.new(0, s / 2, 0), C.Wood, Enum.Material.WoodPlanks)
+end
+
+function Build.barrel(parent: Instance, pos: Vector3)
+	local model = Build.model("Barril", parent)
+	Build.cyl(model, CFrame.new(pos + Vector3.new(0, 1.6, 0)), 3.2, 2.4, C.Wood, Enum.Material.Wood)
+	for _, y in { 0.5, 2.7 } do
+		Build.cyl(model, CFrame.new(pos + Vector3.new(0, y, 0)), 0.25, 2.5, C.Iron, Enum.Material.Metal)
+	end
+	return model
+end
+
+-- Placa de madeira com texto
+function Build.sign(parent: Instance, cf: CFrame, text: string, width: number?)
+	local model = Build.model("Placa", parent)
+	local w = width or 6
+	Build.box(model, Vector3.new(0.5, 4, 0.5), cf * CFrame.new(0, 2, 0.3), C.DarkWood, Enum.Material.Wood)
+	local board = Build.box(model, Vector3.new(w, 2, 0.3), cf * CFrame.new(0, 4, 0), C.OldWood, Enum.Material.WoodPlanks)
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.CanvasSize = Vector2.new(w * 50, 100)
+	gui.LightInfluence = 1
+	gui.Parent = board
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextScaled = true
+	label.Font = Enum.Font.Creepster
+	label.TextColor3 = Color3.fromRGB(70, 10, 10)
+	label.Parent = gui
+	return model
+end
+
+function Build.cart(parent: Instance, cf: CFrame)
+	local model = Build.model("Carroca", parent)
+	Build.box(model, Vector3.new(5, 0.5, 8), cf * CFrame.new(0, 2.2, 0), C.OldWood, Enum.Material.WoodPlanks)
+	for _, x in { -2.4, 2.4 } do
+		Build.box(model, Vector3.new(0.3, 1.6, 8), cf * CFrame.new(x, 3.2, 0), C.OldWood, Enum.Material.WoodPlanks)
+		Build.cylX(model, cf * CFrame.new(x * 1.1, 1.8, 2), 0.5, 3.6, C.DarkWood, Enum.Material.Wood)
+	end
+	-- uma roda quebrada caída
+	Build.cylX(model, cf * CFrame.new(-1, 0.3, -6) * CFrame.Angles(0, 0, math.rad(90)), 0.5, 3.6, C.DarkWood, Enum.Material.Wood)
+	Build.box(model, Vector3.new(0.4, 0.4, 5), cf * CFrame.new(0, 1.4, -6), C.DarkWood, Enum.Material.Wood)
+	return model
+end
+
+return Build
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX10">
+					<Properties>
+						<string name="Name">Generators</string>
+						<ProtectedString name="Source"><![CDATA[-- Generators: o objetivo dos sobreviventes. Cada gerador consertado tira tempo do relógio.
+
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Build = require(script.Parent.Build)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Remotes = require(Shared:WaitForChild("Remotes"))
+
+local Notify = Remotes.get("Notify")
+local G = Config.Generator
+
+local Generators = {}
+
+export type Gen = {
+	model: Model,
+	progress: number,
+	done: boolean,
+	prompt: ProximityPrompt,
+	fill: Frame,
+	label: TextLabel,
+	lamp: BasePart,
+}
+
+local function create(parent: Instance, cf: CFrame, index: number): Gen
+	local model = Build.model("Gerador" .. index, parent)
+	Build.box(model, Vector3.new(5.4, 0.8, 3.8), cf * CFrame.new(0, 0.4, 0), Color3.fromRGB(40, 40, 44), Enum.Material.DiamondPlate)
+	local body = Build.box(model, Vector3.new(4.6, 3.4, 3), cf * CFrame.new(0, 2.5, 0), Color3.fromRGB(150, 120, 40), Enum.Material.CorrodedMetal)
+	body.Name = "Corpo"
+	Build.box(model, Vector3.new(2.2, 1.4, 0.2), cf * CFrame.new(-0.6, 2.8, -1.55), Color3.fromRGB(30, 30, 30), Enum.Material.Metal)
+	Build.cyl(model, cf * CFrame.new(1.6, 4.8, 0.6), 1.6, 0.6, Color3.fromRGB(50, 50, 50), Enum.Material.Metal)
+	for _, x in { -2.4, 2.4 } do
+		Build.box(model, Vector3.new(0.3, 3.8, 3.2), cf * CFrame.new(x, 2.3, 0), Color3.fromRGB(46, 46, 50), Enum.Material.Metal)
+	end
+	-- fios
+	for i = 0, 2 do
+		Build.beam(model, (cf * CFrame.new(-1.8 + i * 0.4, 0.8, 1.5)).Position, (cf * CFrame.new(-2.5 + i * 1.5, 0.15, 4.5)).Position, 0.15, Color3.fromRGB(20, 20, 20), Enum.Material.Rubber)
+	end
+	local lamp = Build.ball(model, (cf * CFrame.new(-1.4, 4.5, 0)).Position, 0.9, Color3.fromRGB(255, 40, 30), Enum.Material.Neon)
+	Build.light(lamp, Color3.fromRGB(255, 50, 40), 12, 1.2)
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Consertar"
+	prompt.ObjectText = "Gerador"
+	prompt.HoldDuration = G.HoldDuration
+	prompt.MaxActivationDistance = 8
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.Parent = body
+	CollectionService:AddTag(prompt, "GeneratorPrompt")
+
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromOffset(120, 34)
+	bb.StudsOffset = Vector3.new(0, 4.5, 0)
+	bb.MaxDistance = 60
+	bb.AlwaysOnTop = false
+	bb.Parent = body
+	local back = Instance.new("Frame")
+	back.Size = UDim2.new(1, 0, 0, 10)
+	back.Position = UDim2.new(0, 0, 1, -10)
+	back.BackgroundColor3 = Color3.fromRGB(20, 10, 10)
+	back.BorderSizePixel = 0
+	back.Parent = bb
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(220, 60, 40)
+	fill.BorderSizePixel = 0
+	fill.Parent = back
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, -12)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(240, 220, 200)
+	label.TextStrokeTransparency = 0.4
+	label.Text = "0%"
+	label.Parent = bb
+
+	return {
+		model = model,
+		progress = 0,
+		done = false,
+		prompt = prompt,
+		fill = fill,
+		label = label,
+		lamp = lamp,
+	}
+end
+
+-- Cria os geradores do mapa. onRepaired(gen, player, totalDone) é chamado a cada conserto.
+function Generators.spawn(parent: Instance, cframes: { CFrame }, onRepaired: (Gen, Player, number) -> ())
+	local folder = Instance.new("Folder")
+	folder.Name = "Geradores"
+	folder.Parent = parent
+	local list: { Gen } = {}
+	local doneCount = 0
+	for i, cf in cframes do
+		local gen = create(folder, cf, i)
+		table.insert(list, gen)
+		gen.prompt.Triggered:Connect(function(player: Player)
+			if gen.done or player:GetAttribute("Role") ~= "Survivor" then
+				return
+			end
+			gen.progress = math.min(100, gen.progress + G.StepPercent)
+			gen.fill.Size = UDim2.fromScale(gen.progress / 100, 1)
+			gen.label.Text = gen.progress .. "%"
+			if gen.progress >= 100 then
+				gen.done = true
+				gen.prompt.Enabled = false
+				gen.prompt:SetAttribute("Done", true)
+				gen.fill.BackgroundColor3 = Color3.fromRGB(80, 220, 90)
+				gen.label.Text = "CONSERTADO"
+				gen.lamp.Color = Color3.fromRGB(80, 255, 90)
+				local light = gen.lamp:FindFirstChildOfClass("PointLight")
+				if light then
+					light.Color = Color3.fromRGB(80, 255, 90)
+					light.Range = 22
+				end
+				if Config.Sounds.GeneratorDone ~= "" then
+					local s = Instance.new("Sound")
+					s.SoundId = Config.Sounds.GeneratorDone
+					s.Volume = 1
+					s.RollOffMaxDistance = 200
+					s.Parent = gen.lamp
+					s:Play()
+				end
+				doneCount += 1
+				onRepaired(gen, player, doneCount)
+			end
+		end)
+	end
+	return {
+		list = list,
+		total = #list,
+		done = function()
+			return doneCount
+		end,
+	}
+end
+
+-- Avisa todo mundo
+function Generators.broadcast(text: string, color: Color3?)
+	for _, p in Players:GetPlayers() do
+		Notify:FireClient(p, text, color)
+	end
+end
+
+return Generators
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX11">
+					<Properties>
+						<string name="Name">KillerBot</string>
+						<ProtectedString name="Source"><![CDATA[-- KillerBot: um Espantalho controlado pelo computador.
+-- Entra quando não há jogadores suficientes (ex.: testar sozinho no Studio).
+
+local PathfindingService = game:GetService("PathfindingService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Roles = require(script.Parent.Roles)
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local K = Config.Killer
+local KillerBot = {}
+
+local function makeRig(): Model?
+	local ok, rig = pcall(function()
+		local desc = Instance.new("HumanoidDescription")
+		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	end)
+	if ok and rig then
+		return rig
+	end
+	warn("[KillerBot] Não foi possível criar o boneco:", rig)
+	return nil
+end
+
+local function flat(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+function KillerBot.spawn(position: Vector3): Model?
+	local rig = makeRig()
+	if not rig then
+		return nil
+	end
+	rig.Name = Config.KILLER_NAME
+	rig:PivotTo(CFrame.new(position + Vector3.new(0, 3, 0)))
+	rig.Parent = workspace
+	local humanoid = rig:FindFirstChildOfClass("Humanoid") :: Humanoid
+	local root = rig:FindFirstChild("HumanoidRootPart") :: BasePart
+	if not humanoid or not root then
+		rig:Destroy()
+		return nil
+	end
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
+	Roles.makeKiller(rig, nil)
+
+	task.spawn(function()
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		local waypoints: { PathWaypoint } = {}
+		local wpIndex = 1
+		local lastPath = 0
+		local lastTarget: Vector3? = nil
+		local wanderGoal: Vector3? = nil
+		local stuckTime, lastPos = 0, root.Position
+
+		while rig.Parent and humanoid.Health > 0 do
+			local dt = task.wait(0.15)
+			local st = Roles.stateOf(rig)
+			if not st then
+				break
+			end
+			if rig:GetAttribute("Frozen") or rig:GetAttribute("Stunned") then
+				continue
+			end
+
+			-- alvo: sobrevivente vivo mais próximo
+			local target, targetDist = nil, math.huge
+			for _, s in Roles.survivors() do
+				local r = s.character:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if r then
+					local d = (r.Position - root.Position).Magnitude
+					if d < targetDist then
+						target, targetDist = r, d
+					end
+				end
+			end
+
+			if target then
+				local tpos = target.Position
+				params.FilterDescendantsInstances = { rig, target.Parent :: Instance }
+				local blocked = workspace:Raycast(root.Position, tpos - root.Position, params) ~= nil
+				if targetDist <= K.AttackRange - 1.5 then
+					root.CFrame = CFrame.lookAt(root.Position, Vector3.new(tpos.X, root.Position.Y, tpos.Z))
+					Roles.attack(rig)
+					humanoid:MoveTo(tpos)
+				elseif not blocked and targetDist < 45 then
+					humanoid:MoveTo(tpos)
+					waypoints = {}
+					if targetDist > 14 and targetDist < 35 then
+						Roles.dash(rig)
+					end
+				else
+					if targetDist > 40 then
+						Roles.howl(rig) -- avisa os sobreviventes que ele está farejando
+					end
+					local now = os.clock()
+					if now - lastPath > 1 or not lastTarget or (lastTarget - tpos).Magnitude > 12 or wpIndex > #waypoints then
+						lastPath = now
+						lastTarget = tpos
+						local path = PathfindingService:CreatePath({ AgentRadius = 2.5, AgentHeight = 6, AgentCanJump = true, WaypointSpacing = 6 })
+						local ok = pcall(function()
+							path:ComputeAsync(root.Position, tpos)
+						end)
+						if ok and path.Status == Enum.PathStatus.Success then
+							waypoints = path:GetWaypoints()
+							wpIndex = math.min(2, #waypoints)
+						else
+							waypoints = {}
+							humanoid:MoveTo(tpos)
+						end
+					end
+					local wp = waypoints[wpIndex]
+					if wp then
+						if flat(wp.Position - root.Position).Magnitude < 3.5 then
+							wpIndex += 1
+							wp = waypoints[wpIndex]
+						end
+						if wp then
+							if wp.Action == Enum.PathWaypointAction.Jump then
+								humanoid.Jump = true
+							end
+							humanoid:MoveTo(wp.Position)
+						end
+					end
+				end
+			else
+				-- ninguém vivo: anda à toa
+				if not wanderGoal or flat(wanderGoal - root.Position).Magnitude < 4 then
+					wanderGoal = root.Position + Vector3.new(math.random(-40, 40), 0, math.random(-40, 40))
+				end
+				humanoid:MoveTo(wanderGoal)
+			end
+
+			-- destravar se ficar preso
+			if (root.Position - lastPos).Magnitude < 0.3 and humanoid.WalkSpeed > 0 then
+				stuckTime += dt
+				if stuckTime > 1.2 then
+					humanoid.Jump = true
+					waypoints = {}
+					stuckTime = 0
+				end
+			else
+				stuckTime = 0
+			end
+			lastPos = root.Position
+		end
+	end)
+	return rig
+end
+
+return KillerBot
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX12">
+					<Properties>
+						<string name="Name">Lobby</string>
+						<ProtectedString name="Source"><![CDATA[-- Lobby: o cercado de grades onde os jogadores nascem, com paredes invisíveis,
+-- os 4 quadrados de votação e o cenário de fazenda em volta (só decoração).
+
+local Build = require(script.Parent.Build)
+local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+
+local C = Build.Colors
+local Lobby = {}
+
+export type Pad = {
+	index: number,
+	part: BasePart,
+	center: Vector3,
+	half: number,
+	borders: { BasePart },
+	glow: BasePart,
+	title: TextLabel,
+	desc: TextLabel,
+	votes: TextLabel,
+	bar: Frame,
+}
+
+local CAGE_W = 72 -- largura (X)
+local CAGE_D = 60 -- profundidade (Z)
+
+local function makePad(parent: Instance, index: number, pos: Vector3): Pad
+	local model = Build.model("Votacao" .. index, parent)
+	local size = 12
+	local base = Build.box(model, Vector3.new(size, 0.6, size), CFrame.new(pos + Vector3.new(0, 0.3, 0)), Color3.fromRGB(30, 28, 32), Enum.Material.Slate)
+	base.Name = "Quadrado"
+	local glow = Build.box(model, Vector3.new(size - 2, 0.1, size - 2), CFrame.new(pos + Vector3.new(0, 0.62, 0)), Color3.fromRGB(80, 80, 80), Enum.Material.Neon, {
+		Transparency = 0.55,
+		CanCollide = false,
+		CastShadow = false,
+	})
+	local borders = {}
+	for _, data in {
+		{ Vector3.new(size, 0.3, 0.5), Vector3.new(0, 0.75, -size / 2 + 0.25) },
+		{ Vector3.new(size, 0.3, 0.5), Vector3.new(0, 0.75, size / 2 - 0.25) },
+		{ Vector3.new(0.5, 0.3, size), Vector3.new(-size / 2 + 0.25, 0.75, 0) },
+		{ Vector3.new(0.5, 0.3, size), Vector3.new(size / 2 - 0.25, 0.75, 0) },
+	} do
+		local b = Build.box(model, data[1], CFrame.new(pos + data[2]), Color3.fromRGB(120, 120, 120), Enum.Material.Neon, { CastShadow = false })
+		table.insert(borders, b)
+	end
+	local light = Build.light(glow, Color3.fromRGB(200, 200, 200), 14, 1)
+	light.Name = "Luz"
+
+	-- Placa com o nome do mapa (de frente para o spawn)
+	local boardPos = pos + Vector3.new(0, 0, 8)
+	for _, x in { -5.2, 5.2 } do
+		Build.box(model, Vector3.new(0.6, 10, 0.6), CFrame.new(boardPos + Vector3.new(x, 5, 0.4)), C.DarkWood, Enum.Material.Wood)
+	end
+	local board = Build.box(model, Vector3.new(11.4, 6.5, 0.4), CFrame.new(boardPos + Vector3.new(0, 6.2, 0)), Color3.fromRGB(34, 26, 22), Enum.Material.WoodPlanks)
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.CanvasSize = Vector2.new(570, 325)
+	gui.LightInfluence = 0.2
+	gui.Parent = board
+
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(1, 0, 0, 14)
+	bar.BorderSizePixel = 0
+	bar.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
+	bar.Parent = gui
+
+	local title = Instance.new("TextLabel")
+	title.Position = UDim2.new(0, 16, 0, 24)
+	title.Size = UDim2.new(1, -32, 0, 90)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.Creepster
+	title.TextScaled = true
+	title.TextColor3 = Color3.fromRGB(235, 225, 210)
+	title.Text = "..."
+	title.Parent = gui
+
+	local desc = Instance.new("TextLabel")
+	desc.Position = UDim2.new(0, 20, 0, 118)
+	desc.Size = UDim2.new(1, -40, 0, 90)
+	desc.BackgroundTransparency = 1
+	desc.Font = Enum.Font.Gotham
+	desc.TextWrapped = true
+	desc.TextSize = 26
+	desc.TextColor3 = Color3.fromRGB(190, 180, 170)
+	desc.Text = ""
+	desc.Parent = gui
+
+	local votes = Instance.new("TextLabel")
+	votes.Position = UDim2.new(0, 16, 1, -100)
+	votes.Size = UDim2.new(1, -32, 0, 86)
+	votes.BackgroundTransparency = 1
+	votes.Font = Enum.Font.GothamBlack
+	votes.TextScaled = true
+	votes.TextColor3 = Color3.fromRGB(255, 255, 255)
+	votes.Text = "0 votos"
+	votes.Parent = gui
+
+	return {
+		index = index,
+		part = base,
+		center = pos,
+		half = size / 2,
+		borders = borders,
+		glow = glow,
+		title = title,
+		desc = desc,
+		votes = votes,
+		bar = bar,
+	}
+end
+
+-- Cenário de fazenda do lado de fora (decoração, ninguém chega lá)
+local function buildFarmland(root: Instance, c: Vector3)
+	local rng = Random.new(1337)
+	local farm = Build.model("Fazendas", root)
+	local terrain = workspace.Terrain
+
+	-- Estradas de terra
+	terrain:FillBlock(CFrame.new(c + Vector3.new(0, -2, -58)), Vector3.new(900, 4.2, 14), Enum.Material.Ground)
+	terrain:FillBlock(CFrame.new(c + Vector3.new(0, -2, -44)), Vector3.new(10, 4.2, 30), Enum.Material.Ground)
+	terrain:FillBlock(CFrame.new(c + Vector3.new(-52, -2, 60)), Vector3.new(12, 4.2, 360), Enum.Material.Ground)
+
+	-- NORTE (à frente do jogador): campo de trigo, celeiro, silos e moinho
+	terrain:FillBlock(CFrame.new(c + Vector3.new(0, -2, 90)), Vector3.new(84, 4.2, 70), Enum.Material.Mud)
+	Build.crops(farm, CFrame.new(c + Vector3.new(0, 0, 90)), 80, 66, "wheat")
+	Build.fence(farm, c + Vector3.new(-43, 0, 54), c + Vector3.new(43, 0, 54))
+	Build.fence(farm, c + Vector3.new(-43, 0, 126), c + Vector3.new(43, 0, 126))
+	Build.fence(farm, c + Vector3.new(43, 0, 54), c + Vector3.new(43, 0, 126))
+	Build.scarecrow(farm, CFrame.new(c + Vector3.new(-12, 0, 84)) * CFrame.Angles(0, math.rad(180), 0))
+	Build.scarecrow(farm, CFrame.new(c + Vector3.new(20, 0, 104)) * CFrame.Angles(0, math.rad(200), 0))
+
+	Build.barn(farm, CFrame.new(c + Vector3.new(85, 0, 160)) * CFrame.Angles(0, math.rad(200), 0), 34, 44, 18)
+	Build.silo(farm, c + Vector3.new(116, 0, 140), 11, 30)
+	Build.silo(farm, c + Vector3.new(124, 0, 160), 9, 24)
+	Build.windmill(farm, c + Vector3.new(-95, 0, 175), Vector3.new(0.4, 0, -1))
+	for i = 0, 5 do
+		Build.haybale(farm, CFrame.new(c + Vector3.new(60 + i * 6, 0, 120 + (i % 2) * 5)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), i % 3 == 0)
+	end
+	Build.lamp(farm, c + Vector3.new(62, 0, 138))
+
+	-- OESTE: casa da fazenda, trator, poço e plantação de abóboras
+	Build.building(farm, CFrame.new(c + Vector3.new(-120, 0, 10)) * CFrame.Angles(0, math.rad(-90), 0), 30, 24, 13, {
+		name = "CasaDaFazenda",
+		wallColor = Color3.fromRGB(150, 140, 120),
+		roofColor = Color3.fromRGB(50, 40, 36),
+		trim = C.Trim,
+		litWindows = true,
+		doors = { front = true },
+	})
+	Build.fence(farm, c + Vector3.new(-90, 0, -30), c + Vector3.new(-90, 0, 50))
+	Build.tractor(farm, CFrame.new(c + Vector3.new(-78, 0, 34)) * CFrame.Angles(0, math.rad(30), 0))
+	Build.well(farm, c + Vector3.new(-100, 0, 44))
+	Build.lamp(farm, c + Vector3.new(-96, 0, 2))
+	terrain:FillBlock(CFrame.new(c + Vector3.new(-72, -2, -28)), Vector3.new(30, 4.2, 30), Enum.Material.Mud)
+	for _ = 1, 22 do
+		local p = c + Vector3.new(-72 + rng:NextNumber(-13, 13), 0, -28 + rng:NextNumber(-13, 13))
+		Build.pumpkin(farm, p, rng:NextNumber() < 0.35, rng:NextNumber(0.8, 1.4))
+	end
+	Build.cart(farm, CFrame.new(c + Vector3.new(-60, 0, 12)) * CFrame.Angles(0, math.rad(70), 0))
+
+	-- LESTE: milharal, espantalhos e um galpão
+	terrain:FillBlock(CFrame.new(c + Vector3.new(125, -2, 0)), Vector3.new(110, 4.2, 150), Enum.Material.Mud)
+	Build.crops(farm, CFrame.new(c + Vector3.new(125, 0, 0)), 104, 144, "corn")
+	Build.scarecrow(farm, CFrame.new(c + Vector3.new(76, 0, -10)) * CFrame.Angles(0, math.rad(-90), 0))
+	Build.fence(farm, c + Vector3.new(68, 0, -78), c + Vector3.new(68, 0, 78))
+	Build.building(farm, CFrame.new(c + Vector3.new(120, 0, -110)) * CFrame.Angles(0, math.rad(160), 0), 18, 14, 9, {
+		name = "Galpao",
+		wallColor = Color3.fromRGB(90, 80, 70),
+		roofColor = Color3.fromRGB(60, 56, 54),
+		roofMat = Enum.Material.CorrodedMetal,
+		doors = { front = true },
+	})
+
+	-- SUL (atrás do spawn): pomar morto e uma capela distante com túmulos
+	for _ = 1, 26 do
+		local p = c + Vector3.new(rng:NextNumber(-140, 140), 0, rng:NextNumber(-170, -80))
+		Build.tree(farm, p, rng, "dead")
+	end
+	Build.building(farm, CFrame.new(c + Vector3.new(30, 0, -230)) * CFrame.Angles(0, math.rad(10), 0), 20, 30, 14, {
+		name = "Capela",
+		wallColor = Color3.fromRGB(110, 106, 104),
+		wallMat = Enum.Material.Brick,
+		roofColor = Color3.fromRGB(40, 36, 38),
+		roofH = 10,
+	})
+	for i = 0, 10 do
+		Build.tombstone(farm, CFrame.new(c + Vector3.new(-10 + (i % 6) * 5, 0, -200 - math.floor(i / 6) * 9)), rng)
+	end
+
+	-- Fileira de árvores no horizonte
+	for i = 1, 70 do
+		local a = (i / 70) * math.pi * 2 + rng:NextNumber(-0.04, 0.04)
+		local r = rng:NextNumber(250, 330)
+		Build.tree(farm, c + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r), rng, if i % 3 == 0 then "pine" else nil)
+	end
+	-- Árvores soltas e pedras
+	for _ = 1, 25 do
+		local p = c + Vector3.new(rng:NextNumber(-220, 220), 0, rng:NextNumber(-220, 220))
+		if math.abs(p.X - c.X) > 70 or math.abs(p.Z - c.Z) > 130 then
+			if rng:NextNumber() < 0.6 then
+				Build.tree(farm, p, rng)
+			else
+				Build.rock(farm, p, rng)
+			end
+		end
+	end
+end
+
+function Lobby.build()
+	local c = Config.LOBBY_CENTER
+	local root = Build.model("Lobby", workspace)
+
+	-- Chão de grama (Terrain) bem grande
+	workspace.Terrain:FillBlock(CFrame.new(c + Vector3.new(0, -4, 0)), Vector3.new(1000, 8, 1000), Enum.Material.Grass)
+
+	-- Piso de pedra do cercado
+	Build.box(root, Vector3.new(CAGE_W, 1, CAGE_D), CFrame.new(c + Vector3.new(0, 0.5, 0)), Color3.fromRGB(70, 68, 72), Enum.Material.Cobblestone)
+	Build.box(root, Vector3.new(CAGE_W + 3, 0.6, CAGE_D + 3), CFrame.new(c + Vector3.new(0, 0.3, 0)), Color3.fromRGB(50, 48, 52), Enum.Material.Slate)
+
+	-- Grades em volta
+	local cage = Build.model("Cercado", root)
+	local x0, x1 = c.X - CAGE_W / 2, c.X + CAGE_W / 2
+	local z0, z1 = c.Z - CAGE_D / 2, c.Z + CAGE_D / 2
+	local y = c.Y + 1
+	Build.bars(cage, Vector3.new(x0, y, z0), Vector3.new(x1, y, z0), 14)
+	Build.bars(cage, Vector3.new(x0, y, z1), Vector3.new(x1, y, z1), 14)
+	Build.bars(cage, Vector3.new(x0, y, z0), Vector3.new(x0, y, z1), 14)
+	Build.bars(cage, Vector3.new(x1, y, z0), Vector3.new(x1, y, z1), 14)
+
+	-- Pilares de pedra com lanternas nos cantos
+	for _, px in { x0, x1 } do
+		for _, pz in { z0, z1 } do
+			Build.box(cage, Vector3.new(3, 17, 3), CFrame.new(px, y + 8.5, pz), C.DarkStone, Enum.Material.Cobblestone)
+			Build.box(cage, Vector3.new(3.6, 0.8, 3.6), CFrame.new(px, y + 17.4, pz), C.Stone, Enum.Material.Slate)
+			local lantern = Build.box(cage, Vector3.new(1.4, 1.8, 1.4), CFrame.new(px, y + 18.7, pz), C.LampLight, Enum.Material.Neon)
+			Build.light(lantern, C.LampLight, 30, 1.4, true)
+		end
+	end
+
+	-- Portão trancado (atrás do spawn)
+	local gate = Build.model("Portao", cage)
+	Build.box(gate, Vector3.new(0.8, 16, 0.8), CFrame.new(c.X - 5, y + 8, z0 - 0.2), C.Iron, Enum.Material.CorrodedMetal)
+	Build.box(gate, Vector3.new(0.8, 16, 0.8), CFrame.new(c.X + 5, y + 8, z0 - 0.2), C.Iron, Enum.Material.CorrodedMetal)
+	Build.box(gate, Vector3.new(10.8, 0.8, 0.8), CFrame.new(c.X, y + 15.6, z0 - 0.2), C.Iron, Enum.Material.CorrodedMetal)
+	Build.box(gate, Vector3.new(1.4, 1.6, 0.8), CFrame.new(c.X, y + 6, z0 - 0.6), Color3.fromRGB(90, 70, 40), Enum.Material.Metal)
+	for i = -4, 4 do
+		Build.box(gate, Vector3.new(0.5, 0.25, 0.25), CFrame.new(c.X + i * 0.5, y + 6.6 + math.abs(i) * 0.25, z0 - 0.5) * CFrame.Angles(0, 0, i * 0.3), Color3.fromRGB(70, 70, 76), Enum.Material.Metal)
+	end
+
+	-- PAREDES INVISÍVEIS: o jogador não consegue sair nem pular por cima da grade
+	Build.invisibleBox(root, Vector3.new(c.X, c.Y, c.Z), CAGE_W - 1, CAGE_D - 1, 120)
+
+	-- Spawn (o jogador nasce olhando para os quadrados de votação, em +Z)
+	local spawnPos = c + Vector3.new(0, 1.1, -16)
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = "SpawnLobby"
+	spawn.Anchored = true
+	spawn.Neutral = true
+	spawn.Duration = 0
+	spawn.Size = Vector3.new(10, 0.2, 10)
+	spawn.CFrame = CFrame.new(spawnPos) * CFrame.Angles(0, math.pi, 0)
+	spawn.Color = Color3.fromRGB(40, 20, 20)
+	spawn.Material = Enum.Material.Slate
+	spawn.TopSurface = Enum.SurfaceType.Smooth
+	spawn.Parent = root
+	local ring = Build.part({
+		Parent = root,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.1, 12, 12),
+		CFrame = CFrame.new(spawnPos + Vector3.new(0, 0.02, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(120, 10, 10),
+		Material = Enum.Material.Neon,
+		Transparency = 0.6,
+		CanCollide = false,
+		CastShadow = false,
+	})
+	Build.light(ring, Color3.fromRGB(255, 40, 30), 12, 0.8)
+
+	-- Decoração dentro do cercado
+	local deco = Build.model("Decoracao", root)
+	for _, side in { -1, 1 } do
+		local bx = c.X + side * (CAGE_W / 2 - 4)
+		for _, bz in { -18, 0 } do
+			local bench = CFrame.new(bx, y, c.Z + bz) * CFrame.Angles(0, side * math.rad(90), 0)
+			Build.box(deco, Vector3.new(7, 0.4, 1.8), bench * CFrame.new(0, 1.8, 0), C.Wood, Enum.Material.WoodPlanks)
+			Build.box(deco, Vector3.new(7, 1.6, 0.3), bench * CFrame.new(0, 2.8, 0.9), C.Wood, Enum.Material.WoodPlanks)
+			for _, lx in { -3, 3 } do
+				Build.box(deco, Vector3.new(0.4, 1.8, 1.6), bench * CFrame.new(lx, 0.9, 0), C.Iron, Enum.Material.CorrodedMetal)
+			end
+		end
+		Build.lamp(deco, Vector3.new(c.X + side * (CAGE_W / 2 - 3), y, c.Z - 8), nil, 12)
+	end
+	Build.crate(deco, CFrame.new(c.X - 30, y, c.Z - 26))
+	Build.crate(deco, CFrame.new(c.X - 27, y, c.Z - 26.5) * CFrame.Angles(0, 0.4, 0), 2.4)
+	Build.barrel(deco, Vector3.new(c.X + 30, y, c.Z - 25))
+	for i = -3, 3 do
+		Build.pumpkin(deco, Vector3.new(c.X + i * 9.5, y, c.Z - CAGE_D / 2 + 2.2), i % 2 == 0, 0.8)
+	end
+	Build.sign(deco, CFrame.new(c.X - 18, y, c.Z - 26) * CFrame.Angles(0, math.pi, 0), "NÃO SAIA DO CERCADO", 9)
+	Build.sign(deco, CFrame.new(c.X + 18, y, c.Z - 26) * CFrame.Angles(0, math.pi, 0), "Ele está na plantação...", 9)
+
+	-- Quadrados de votação na frente do jogador
+	local pads: { Pad } = {}
+	local count = Config.VOTE_OPTIONS
+	local spacing = 16
+	for i = 1, count do
+		local x = (i - (count + 1) / 2) * spacing
+		table.insert(pads, makePad(root, i, c + Vector3.new(x, 1, 10)))
+	end
+
+	-- Placa grande "ESCOLHA O MAPA"
+	local banner = Build.box(root, Vector3.new(40, 4, 0.4), CFrame.new(c + Vector3.new(0, 15, 24)), Color3.fromRGB(26, 18, 16), Enum.Material.WoodPlanks)
+	for _, x in { -19, 19 } do
+		Build.box(root, Vector3.new(0.6, 15, 0.6), CFrame.new(c + Vector3.new(x, 8.5, 24.4)), C.DarkWood, Enum.Material.Wood)
+	end
+	local bGui = Instance.new("SurfaceGui")
+	bGui.Face = Enum.NormalId.Front
+	bGui.CanvasSize = Vector2.new(1000, 100)
+	bGui.LightInfluence = 0
+	bGui.Parent = banner
+	local bText = Instance.new("TextLabel")
+	bText.Size = UDim2.fromScale(1, 1)
+	bText.BackgroundTransparency = 1
+	bText.Font = Enum.Font.Creepster
+	bText.TextScaled = true
+	bText.TextColor3 = Color3.fromRGB(200, 30, 24)
+	bText.Text = "PISE NUM QUADRADO PARA VOTAR NO MAPA"
+	bText.Parent = bGui
+
+	buildFarmland(root, c)
+
+	return {
+		model = root,
+		spawn = spawn,
+		pads = pads,
+		bounds = { min = Vector3.new(x0, y - 2, z0), max = Vector3.new(x1, y + 120, z1) },
+	}
+end
+
+return Lobby
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX13">
+					<Properties>
+						<string name="Name">Maps</string>
+						<ProtectedString name="Source"><![CDATA[-- Maps: os mapas da partida. Cada mapa é gerado por código (com um pouco de
+-- aleatoriedade a cada partida) e destruído quando a partida acaba.
+--
+-- Para criar um mapa novo, copie uma das entradas de Maps.List e mude a função build.
+-- build(ctx) precisa devolver:
+--   survivorSpawns = { Vector3 }  (onde os sobreviventes nascem)
+--   killerSpawn    = Vector3      (onde o assassino nasce)
+--   generators     = { CFrame }   (onde ficam os geradores)
+
+local Build = require(script.Parent.Build)
+local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+
+local C = Build.Colors
+local Maps = {}
+
+export type MapInfo = {
+	survivorSpawns: { Vector3 },
+	killerSpawn: Vector3,
+	generators: { CFrame },
+}
+
+export type Ctx = {
+	center: Vector3,
+	half: number,
+	rng: Random,
+	model: Model,
+	props: Model,
+	w: (x: number, z: number, y: number?) -> Vector3,
+}
+
+export type MapDef = {
+	id: string,
+	name: string,
+	desc: string,
+	color: Color3,
+	half: number,
+	lighting: string,
+	build: (ctx: Ctx) -> MapInfo,
+}
+
+---------------------------------------------------------------------------------
+-- Utilidades
+---------------------------------------------------------------------------------
+
+local terrainParams = RaycastParams.new()
+terrainParams.FilterType = Enum.RaycastFilterType.Include
+terrainParams.FilterDescendantsInstances = { workspace.Terrain }
+
+-- Altura do terreno em (x, z) do mapa
+local function groundAt(ctx: Ctx, x: number, z: number): Vector3
+	local origin = ctx.w(x, z, 80)
+	local hit = workspace:Raycast(origin, Vector3.new(0, -200, 0), terrainParams)
+	if hit then
+		return hit.Position
+	end
+	return ctx.w(x, z, 0)
+end
+
+local function genCF(ctx: Ctx, x: number, z: number): CFrame
+	local p = groundAt(ctx, x, z)
+	return CFrame.new(p) * CFrame.Angles(0, ctx.rng:NextNumber(0, math.pi * 2), 0)
+end
+
+type Avoid = { p: Vector3, r: number }
+
+-- Espalha pontos aleatórios (coordenadas locais, Y = 0) respeitando distâncias
+local function scatter(ctx: Ctx, n: number, minDist: number, avoid: { Avoid }, margin: number): { Vector3 }
+	local pts = {}
+	local tries = 0
+	while #pts < n and tries < n * 40 do
+		tries += 1
+		local lim = ctx.half - margin
+		local p = Vector3.new(ctx.rng:NextNumber(-lim, lim), 0, ctx.rng:NextNumber(-lim, lim))
+		local ok = true
+		for _, a in avoid do
+			if (p - Vector3.new(a.p.X, 0, a.p.Z)).Magnitude < a.r then
+				ok = false
+				break
+			end
+		end
+		if ok then
+			for _, q in pts do
+				if (q - p).Magnitude < minDist then
+					ok = false
+					break
+				end
+			end
+		end
+		if ok then
+			table.insert(pts, p)
+		end
+	end
+	return pts
+end
+
+-- Escolhe k itens aleatórios de uma lista
+local function pick<T>(ctx: Ctx, list: { T }, k: number): { T }
+	local copy = table.clone(list)
+	local out = {}
+	for _ = 1, math.min(k, #copy) do
+		table.insert(out, table.remove(copy, ctx.rng:NextInteger(1, #copy)) :: T)
+	end
+	return out
+end
+
+local function ring(center: Vector3, count: number, radius: number): { Vector3 }
+	local out = {}
+	for i = 1, count do
+		local a = (i / count) * math.pi * 2
+		table.insert(out, center + Vector3.new(math.cos(a) * radius, 3, math.sin(a) * radius))
+	end
+	return out
+end
+
+local function ground(ctx: Ctx, material: Enum.Material)
+	workspace.Terrain:FillBlock(CFrame.new(ctx.w(0, 0, -6)), Vector3.new(ctx.half * 2 + 120, 12, ctx.half * 2 + 120), material)
+end
+
+local function strip(ctx: Ctx, x: number, z: number, sx: number, sz: number, material: Enum.Material)
+	workspace.Terrain:FillBlock(CFrame.new(ctx.w(x, z, -2)), Vector3.new(sx, 4.2, sz), material)
+end
+
+-- Paredes invisíveis do mapa
+local function bounds(ctx: Ctx)
+	Build.invisibleBox(ctx.model, ctx.center, ctx.half * 2, ctx.half * 2, 90)
+end
+
+-- Fileira de árvores na borda para "fechar" visualmente o mapa
+local function treeBorder(ctx: Ctx, kind: string?)
+	local h = ctx.half
+	local step = 11
+	for i = -h, h, step do
+		for _, side in { { i, -h - 4 }, { i, h + 4 }, { -h - 4, i }, { h + 4, i } } do
+			local jitter = Vector3.new(ctx.rng:NextNumber(-3, 3), 0, ctx.rng:NextNumber(-3, 3))
+			Build.tree(ctx.props, ctx.w(side[1], side[2]) + jitter, ctx.rng, kind or "pine")
+		end
+	end
+end
+
+local function fenceBorder(ctx: Ctx)
+	local h = ctx.half
+	local corners = { ctx.w(-h, -h), ctx.w(h, -h), ctx.w(h, h), ctx.w(-h, h) }
+	for i = 1, 4 do
+		Build.fence(ctx.props, corners[i], corners[i % 4 + 1], 4.5)
+	end
+end
+
+-- Cercado retangular com aberturas no meio de cada lado
+local function pen(ctx: Ctx, cx: number, cz: number, w: number, d: number)
+	local gap = 7
+	local x0, x1, z0, z1 = cx - w / 2, cx + w / 2, cz - d / 2, cz + d / 2
+	Build.fence(ctx.props, ctx.w(x0, z0), ctx.w(cx - gap / 2, z0))
+	Build.fence(ctx.props, ctx.w(cx + gap / 2, z0), ctx.w(x1, z0))
+	Build.fence(ctx.props, ctx.w(x0, z1), ctx.w(cx - gap / 2, z1))
+	Build.fence(ctx.props, ctx.w(cx + gap / 2, z1), ctx.w(x1, z1))
+	Build.fence(ctx.props, ctx.w(x0, z0), ctx.w(x0, cz - gap / 2))
+	Build.fence(ctx.props, ctx.w(x0, cz + gap / 2), ctx.w(x0, z1))
+	Build.fence(ctx.props, ctx.w(x1, z0), ctx.w(x1, cz - gap / 2))
+	Build.fence(ctx.props, ctx.w(x1, cz + gap / 2), ctx.w(x1, z1))
+end
+
+local function corner(ctx: Ctx, margin: number): Vector3
+	local h = ctx.half - margin
+	local corners = { Vector3.new(-h, 0, -h), Vector3.new(h, 0, -h), Vector3.new(-h, 0, h), Vector3.new(h, 0, h) }
+	return corners[ctx.rng:NextInteger(1, 4)]
+end
+
+---------------------------------------------------------------------------------
+-- 1) Milharal Maldito — labirinto de milho
+---------------------------------------------------------------------------------
+local function buildCornMaze(ctx: Ctx): MapInfo
+	local rng = ctx.rng
+	local N, CS = 13, 18
+	local half = N * CS / 2
+	ground(ctx, Enum.Material.Mud)
+
+	local east, south = {}, {}
+	for x = 1, N do
+		east[x], south[x] = {}, {}
+		for y = 1, N do
+			east[x][y] = true
+			south[x][y] = true
+		end
+	end
+	-- labirinto (backtracking)
+	local visited = {}
+	local function key(x: number, y: number) return x * 100 + y end
+	local stack = { { 1, 1 } }
+	visited[key(1, 1)] = true
+	while #stack > 0 do
+		local cur = stack[#stack]
+		local cx, cy = cur[1], cur[2]
+		local options = {}
+		for _, d in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+			local nx, ny = cx + d[1], cy + d[2]
+			if nx >= 1 and nx <= N and ny >= 1 and ny <= N and not visited[key(nx, ny)] then
+				table.insert(options, { nx, ny })
+			end
+		end
+		if #options == 0 then
+			table.remove(stack)
+		else
+			local n = options[rng:NextInteger(1, #options)]
+			local nx, ny = n[1], n[2]
+			if nx > cx then
+				east[cx][cy] = false
+			elseif nx < cx then
+				east[nx][ny] = false
+			elseif ny > cy then
+				south[cx][cy] = false
+			else
+				south[nx][ny] = false
+			end
+			visited[key(nx, ny)] = true
+			table.insert(stack, { nx, ny })
+		end
+	end
+	-- abre caminhos extras para criar "loops" de perseguição
+	for x = 1, N do
+		for y = 1, N do
+			if x < N and east[x][y] and rng:NextNumber() < 0.24 then
+				east[x][y] = false
+			end
+			if y < N and south[x][y] and rng:NextNumber() < 0.24 then
+				south[x][y] = false
+			end
+		end
+	end
+	-- clareira no centro
+	for x = 6, 8 do
+		for y = 6, 8 do
+			if x < 8 then
+				east[x][y] = false
+			end
+			if y < 8 then
+				south[x][y] = false
+			end
+		end
+	end
+
+	local walls = Build.model("Milho", ctx.model)
+	local H = 10
+	local function cornWall(size: Vector3, pos: Vector3)
+		Build.box(walls, size, CFrame.new(pos + Vector3.new(0, H / 2, 0)), C.Corn, Enum.Material.Grass)
+		Build.box(walls, Vector3.new(math.max(size.X - 1, 1), 1.4, math.max(size.Z - 1, 1)), CFrame.new(pos + Vector3.new(0, H + 0.7, 0)), C.CornTop, Enum.Material.Grass, { CanCollide = false })
+	end
+	local function cellPos(x: number, y: number): Vector3
+		return ctx.w(-half + (x - 0.5) * CS, -half + (y - 0.5) * CS)
+	end
+	for x = 1, N - 1 do
+		for y = 1, N do
+			if east[x][y] then
+				cornWall(Vector3.new(3, H, CS + 3), ctx.w(-half + x * CS, -half + (y - 0.5) * CS))
+			end
+		end
+	end
+	for x = 1, N do
+		for y = 1, N - 1 do
+			if south[x][y] then
+				cornWall(Vector3.new(CS + 3, H, 3), ctx.w(-half + (x - 0.5) * CS, -half + y * CS))
+			end
+		end
+	end
+	-- borda externa
+	cornWall(Vector3.new(half * 2 + 3, H, 3), ctx.w(0, -half))
+	cornWall(Vector3.new(half * 2 + 3, H, 3), ctx.w(0, half))
+	cornWall(Vector3.new(3, H, half * 2 + 3), ctx.w(-half, 0))
+	cornWall(Vector3.new(3, H, half * 2 + 3), ctx.w(half, 0))
+
+	-- geradores em células espalhadas, longe do centro
+	local cells = {}
+	for x = 1, N do
+		for y = 1, N do
+			if math.abs(x - 7) > 2 or math.abs(y - 7) > 2 then
+				table.insert(cells, { x, y })
+			end
+		end
+	end
+	local chosen = {}
+	local tries = 0
+	while #chosen < Config.Generator.Count and tries < 500 do
+		tries += 1
+		local c = cells[rng:NextInteger(1, #cells)]
+		local ok = true
+		for _, o in chosen do
+			if math.max(math.abs(o[1] - c[1]), math.abs(o[2] - c[2])) < 4 then
+				ok = false
+				break
+			end
+		end
+		if ok then
+			table.insert(chosen, c)
+		end
+	end
+	local generators = {}
+	for _, c in chosen do
+		local p = cellPos(c[1], c[2])
+		table.insert(generators, CFrame.new(p) * CFrame.Angles(0, rng:NextInteger(0, 3) * math.pi / 2, 0))
+	end
+
+	-- decoração
+	for i = 1, 7 do
+		local c = cells[rng:NextInteger(1, #cells)]
+		local p = cellPos(c[1], c[2]) + Vector3.new(rng:NextNumber(-4, 4), 0, rng:NextNumber(-4, 4))
+		if i <= 4 then
+			Build.scarecrow(ctx.props, CFrame.new(p + Vector3.new(5, 0, 5)) * CFrame.Angles(0, rng:NextNumber(0, 6), 0))
+		else
+			Build.haybale(ctx.props, CFrame.new(p + Vector3.new(-5, 0, 5)) * CFrame.Angles(0, rng:NextNumber(0, 6), 0))
+		end
+	end
+	for _ = 1, 14 do
+		local c = cells[rng:NextInteger(1, #cells)]
+		Build.pumpkin(ctx.props, cellPos(c[1], c[2]) + Vector3.new(rng:NextNumber(-6, 6), 0, rng:NextNumber(-6, 6)), true)
+	end
+	local mid = cellPos(7, 7)
+	Build.well(ctx.props, mid)
+	for _, o in { Vector3.new(-20, 0, -20), Vector3.new(20, 0, -20), Vector3.new(-20, 0, 20), Vector3.new(20, 0, 20) } do
+		Build.lamp(ctx.props, mid + o)
+	end
+	Build.cart(ctx.props, CFrame.new(mid + Vector3.new(12, 0, -2)) * CFrame.Angles(0, 1.2, 0))
+
+	bounds(ctx)
+	local corners = { { 1, 1 }, { N, 1 }, { 1, N }, { N, N } }
+	local k = corners[rng:NextInteger(1, 4)]
+	return {
+		survivorSpawns = ring(mid, 8, 9),
+		killerSpawn = cellPos(k[1], k[2]) + Vector3.new(0, 3, 0),
+		generators = generators,
+	}
+end
+
+---------------------------------------------------------------------------------
+-- 2) Celeiro Abandonado — fazenda com um celeiro enorme
+---------------------------------------------------------------------------------
+local function buildBarnFarm(ctx: Ctx): MapInfo
+	local rng = ctx.rng
+	ground(ctx, Enum.Material.Grass)
+	strip(ctx, 0, 0, 90, 110, Enum.Material.Ground)
+	strip(ctx, -45, -70, 90, 10, Enum.Material.Ground)
+
+	local gens = pick(ctx, {
+		Vector3.new(-14, 0, 2),
+		Vector3.new(48, 0, -40),
+		Vector3.new(-72, 0, -70),
+		Vector3.new(60, 0, 52),
+		Vector3.new(-62, 0, 58),
+		Vector3.new(-78, 0, -5),
+		Vector3.new(85, 0, -85),
+		Vector3.new(30, 0, 100),
+	}, Config.Generator.Count)
+
+	-- Celeiro principal (quatro portas para dar volta por dentro)
+	local barnCF = CFrame.new(ctx.w(0, 0))
+	local barn = Build.barn(ctx.props, barnCF, 44, 60, 20, { front = true, back = true, left = true, right = true })
+	for _, p in { Vector3.new(-12, 0, -15), Vector3.new(12, 0, -4), Vector3.new(-9, 0, 14) } do
+		Build.hayblock(barn, barnCF * CFrame.new(p) * CFrame.Angles(0, rng:NextNumber(-0.3, 0.3), 0), 2)
+	end
+	-- palheiro (andar de cima) com rampa
+	Build.box(barn, Vector3.new(42, 1, 16), barnCF * CFrame.new(0, 9, 21), C.Wood, Enum.Material.WoodPlanks)
+	Build.part({
+		Parent = barn,
+		ClassName = "WedgePart",
+		Size = Vector3.new(6, 9.5, 18),
+		CFrame = barnCF * CFrame.new(15, 4.75, 4),
+		Color = C.Wood,
+		Material = Enum.Material.WoodPlanks,
+	})
+	for _, x in { -18, -6, 6, 18 } do
+		Build.box(barn, Vector3.new(1, 8.5, 1), barnCF * CFrame.new(x, 4.25, 13.6), C.DarkWood, Enum.Material.Wood)
+	end
+	local barnLamp = Build.box(barn, Vector3.new(1, 1.4, 1), barnCF * CFrame.new(0, 15, 0), C.LampLight, Enum.Material.Neon)
+	Build.light(barnLamp, C.LampLight, 40, 1.2, true)
+
+	Build.silo(ctx.props, ctx.w(40, -30), 11, 30)
+	Build.silo(ctx.props, ctx.w(54, -14), 9, 24)
+	Build.building(ctx.props, CFrame.new(ctx.w(-72, -70)) * CFrame.Angles(0, math.rad(90), 0), 26, 20, 12, {
+		name = "CasaDaFazenda",
+		wallColor = Color3.fromRGB(140, 130, 110),
+		trim = C.Trim,
+		doors = { front = true, back = true },
+		litWindows = true,
+	})
+	pen(ctx, 60, 52, 32, 26)
+	pen(ctx, -62, 58, 28, 30)
+	pen(ctx, 70, -80, 26, 22)
+	Build.crops(ctx.props, CFrame.new(ctx.w(-78, 10)), 26, 44, "wheat")
+	Build.crops(ctx.props, CFrame.new(ctx.w(0, 85)), 56, 20, "corn")
+	Build.tractor(ctx.props, CFrame.new(ctx.w(28, 44)) * CFrame.Angles(0, 0.6, 0))
+	Build.cart(ctx.props, CFrame.new(ctx.w(-34, -42)) * CFrame.Angles(0, -0.4, 0))
+	Build.well(ctx.props, ctx.w(-40, 30))
+	Build.scarecrow(ctx.props, CFrame.new(ctx.w(-78, 10)) * CFrame.Angles(0, 0.4, 0))
+
+	local avoid: { Avoid } = {
+		{ p = Vector3.new(0, 0, 0), r = 42 },
+		{ p = Vector3.new(-72, 0, -70), r = 20 },
+		{ p = Vector3.new(-90, 0, -95), r = 15 },
+		{ p = Vector3.new(95, 0, 95), r = 12 },
+	}
+	for _, g in gens do
+		table.insert(avoid, { p = g, r = 8 })
+	end
+	for _, p in scatter(ctx, 14, 12, avoid, 10) do
+		Build.haybale(ctx.props, CFrame.new(ctx.w(p.X, p.Z)) * CFrame.Angles(0, rng:NextNumber(0, 6), 0), rng:NextNumber() < 0.4)
+	end
+	for _, p in scatter(ctx, 16, 14, avoid, 4) do
+		Build.tree(ctx.props, ctx.w(p.X, p.Z), rng, "dead")
+	end
+	for _, p in { Vector3.new(-30, 0, -30), Vector3.new(30, 0, 30), Vector3.new(-30, 0, 40), Vector3.new(36, 0, -55), Vector3.new(-80, 0, 30), Vector3.new(80, 0, 10) } do
+		Build.lamp(ctx.props, ctx.w(p.X, p.Z))
+	end
+
+	treeBorder(ctx, "dead")
+	fenceBorder(ctx)
+	bounds(ctx)
+
+	local generators = {}
+	for _, g in gens do
+		table.insert(generators, genCF(ctx, g.X, g.Z))
+	end
+	return {
+		survivorSpawns = ring(ctx.w(-90, -95), 8, 7),
+		killerSpawn = ctx.w(95, 95, 3),
+		generators = generators,
+	}
+end
+
+---------------------------------------------------------------------------------
+-- 3) Vila Esquecida — vilarejo abandonado
+---------------------------------------------------------------------------------
+local function buildVillage(ctx: Ctx): MapInfo
+	local rng = ctx.rng
+	ground(ctx, Enum.Material.Grass)
+	for _, v in { -35, 35 } do
+		strip(ctx, v, 0, 14, ctx.half * 2, Enum.Material.Cobblestone)
+		strip(ctx, 0, v, ctx.half * 2, 14, Enum.Material.Cobblestone)
+	end
+	strip(ctx, 0, 0, 44, 44, Enum.Material.Cobblestone)
+
+	local houses = {}
+	local palette = {
+		Color3.fromRGB(120, 110, 96),
+		Color3.fromRGB(96, 84, 76),
+		Color3.fromRGB(110, 100, 110),
+		Color3.fromRGB(130, 120, 100),
+	}
+	for _, gx in { -70, 0, 70 } do
+		for _, gz in { -70, 0, 70 } do
+			if not (gx == 0 and gz == 0) then
+				local rot = rng:NextInteger(0, 3) * math.pi / 2
+				local w, d = rng:NextInteger(22, 28), rng:NextInteger(18, 24)
+				Build.building(ctx.props, CFrame.new(ctx.w(gx, gz)) * CFrame.Angles(0, rot, 0), w, d, 12, {
+					name = "Casa",
+					wallColor = palette[rng:NextInteger(1, #palette)],
+					roofColor = Color3.fromRGB(46, 36, 34),
+					trim = C.DarkWood,
+					doors = { front = true, back = true },
+					litWindows = rng:NextNumber() < 0.3,
+				})
+				table.insert(houses, Vector3.new(gx, 0, gz))
+				-- móveis velhos dentro
+				Build.crate(ctx.props, CFrame.new(ctx.w(gx + rng:NextNumber(-6, 6), gz + rng:NextNumber(-4, 4))) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), 2.6)
+			end
+		end
+	end
+	Build.well(ctx.props, ctx.w(0, 0))
+	Build.tree(ctx.props, ctx.w(12, 12), rng, "dead")
+	Build.tree(ctx.props, ctx.w(-13, -10), rng, "dead")
+
+	for _, x in { -35, 35 } do
+		for _, z in { -105, -70, -35, 0, 35, 70, 105 } do
+			if rng:NextNumber() < 0.6 then
+				Build.lamp(ctx.props, ctx.w(x + 6, z))
+			end
+		end
+	end
+	for _ = 1, 14 do
+		local onX = rng:NextNumber() < 0.5
+		local line = if rng:NextNumber() < 0.5 then -35 else 35
+		local along = rng:NextNumber(-105, 105)
+		local p = if onX then Vector3.new(line + rng:NextNumber(-4, 4), 0, along) else Vector3.new(along, 0, line + rng:NextNumber(-4, 4))
+		if p.Magnitude > 25 then
+			local r = rng:NextNumber()
+			if r < 0.35 then
+				Build.barrel(ctx.props, ctx.w(p.X, p.Z))
+			elseif r < 0.7 then
+				Build.crate(ctx.props, CFrame.new(ctx.w(p.X, p.Z)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0))
+			else
+				Build.cart(ctx.props, CFrame.new(ctx.w(p.X, p.Z)) * CFrame.Angles(0, rng:NextNumber(0, 6), 0))
+			end
+		end
+	end
+	-- cercas quebradas entre as casas
+	for _ = 1, 8 do
+		local a = Vector3.new(rng:NextNumber(-100, 100), 0, rng:NextNumber(-100, 100))
+		local dir = if rng:NextNumber() < 0.5 then Vector3.new(14, 0, 0) else Vector3.new(0, 0, 14)
+		if math.abs(a.X) > 50 or math.abs(a.Z) > 50 then
+			Build.fence(ctx.props, ctx.w(a.X, a.Z), ctx.w(a.X + dir.X, a.Z + dir.Z))
+		end
+	end
+	local avoid: { Avoid } = { { p = Vector3.new(0, 0, 0), r = 30 } }
+	for _, h in houses do
+		table.insert(avoid, { p = h, r = 22 })
+	end
+	for _, v in { -35, 35 } do
+		for i = -110, 110, 10 do
+			table.insert(avoid, { p = Vector3.new(v, 0, i), r = 9 })
+			table.insert(avoid, { p = Vector3.new(i, 0, v), r = 9 })
+		end
+	end
+	for _, p in scatter(ctx, 18, 12, avoid, 6) do
+		Build.tree(ctx.props, ctx.w(p.X, p.Z), rng)
+	end
+	treeBorder(ctx)
+	bounds(ctx)
+
+	local genSpots = {}
+	for _, h in pick(ctx, houses, 2) do
+		table.insert(genSpots, h)
+	end
+	for _, p in pick(ctx, {
+		Vector3.new(35, 0, 0),
+		Vector3.new(-35, 0, 0),
+		Vector3.new(0, 0, 35),
+		Vector3.new(0, 0, -35),
+		Vector3.new(35, 0, 95),
+		Vector3.new(-35, 0, -95),
+		Vector3.new(95, 0, -35),
+		Vector3.new(-95, 0, 35),
+	}, Config.Generator.Count - 2) do
+		table.insert(genSpots, p)
+	end
+	local generators = {}
+	for _, g in genSpots do
+		table.insert(generators, genCF(ctx, g.X, g.Z))
+	end
+	local k = corner(ctx, 12)
+	return {
+		survivorSpawns = ring(ctx.w(0, 0), 8, 12),
+		killerSpawn = ctx.w(k.X, k.Z, 3),
+		generators = generators,
+	}
+end
+
+---------------------------------------------------------------------------------
+-- 4) Cemitério da Capela
+---------------------------------------------------------------------------------
+local function buildGraveyard(ctx: Ctx): MapInfo
+	local rng = ctx.rng
+	local h = ctx.half
+	ground(ctx, Enum.Material.Grass)
+	strip(ctx, 0, -20, 10, h * 2, Enum.Material.Ground)
+	strip(ctx, 0, -30, h * 2, 10, Enum.Material.Ground)
+
+	-- Capela
+	local chapelCF = CFrame.new(ctx.w(0, 75))
+	local chapel = Build.building(ctx.props, chapelCF, 26, 40, 16, {
+		name = "Capela",
+		wallColor = Color3.fromRGB(104, 100, 98),
+		wallMat = Enum.Material.Brick,
+		roofColor = Color3.fromRGB(36, 32, 36),
+		roofMat = Enum.Material.Slate,
+		doors = { front = true, back = true },
+		doorW = 8,
+		doorH = 11,
+		roofH = 10,
+	})
+	Build.box(chapel, Vector3.new(9, 16, 9), chapelCF * CFrame.new(0, 24, -16), Color3.fromRGB(96, 92, 92), Enum.Material.Brick)
+	Build.roof(chapel, chapelCF * CFrame.new(0, 32, -16), 9, 9, 8, Color3.fromRGB(36, 32, 36), Enum.Material.Slate, 0.5)
+	Build.box(chapel, Vector3.new(0.6, 4, 0.6), chapelCF * CFrame.new(0, 42, -16), C.Iron, Enum.Material.Metal)
+	Build.box(chapel, Vector3.new(2.4, 0.6, 0.6), chapelCF * CFrame.new(0, 42.8, -16), C.Iron, Enum.Material.Metal)
+	for z = -12, 12, 5 do
+		for _, x in { -6.5, 6.5 } do
+			Build.box(chapel, Vector3.new(8, 1.6, 1.6), chapelCF * CFrame.new(x, 0.8, z), C.DarkWood, Enum.Material.Wood)
+		end
+	end
+	Build.box(chapel, Vector3.new(8, 3, 3), chapelCF * CFrame.new(0, 1.5, 16), Color3.fromRGB(80, 30, 30), Enum.Material.Fabric)
+	for _, x in { -3, 3 } do
+		local candle = Build.box(chapel, Vector3.new(0.4, 1, 0.4), chapelCF * CFrame.new(x, 3.5, 16), Color3.fromRGB(255, 200, 120), Enum.Material.Neon)
+		Build.light(candle, C.LampLight, 18, 1, true)
+	end
+
+	-- Mausoléus (bons para dar voltas fugindo)
+	local mausoleums = { Vector3.new(-55, 0, -50), Vector3.new(55, 0, -50), Vector3.new(-60, 0, 20), Vector3.new(60, 0, 15) }
+	for _, m in mausoleums do
+		local cf = CFrame.new(ctx.w(m.X, m.Z)) * CFrame.Angles(0, if m.X < 0 then math.rad(90) else math.rad(-90), 0)
+		local model = Build.model("Mausoleu", ctx.props)
+		Build.box(model, Vector3.new(12, 10, 14), cf * CFrame.new(0, 5, 0), Color3.fromRGB(110, 108, 112), Enum.Material.Marble)
+		Build.roof(model, cf * CFrame.new(0, 10, 0), 12, 14, 4, Color3.fromRGB(70, 70, 76), Enum.Material.Slate, 1)
+		Build.box(model, Vector3.new(5, 7, 0.4), cf * CFrame.new(0, 3.5, -7.1), Color3.fromRGB(16, 16, 20), Enum.Material.Metal)
+		for _, x in { -5, 5 } do
+			Build.cyl(model, cf * CFrame.new(x, 5, -8), 10, 1.4, Color3.fromRGB(150, 148, 150), Enum.Material.Marble)
+		end
+	end
+
+	-- Túmulos em fileiras
+	local function nearMaus(x: number, z: number)
+		for _, m in mausoleums do
+			if math.abs(m.X - x) < 14 and math.abs(m.Z - z) < 14 then
+				return true
+			end
+		end
+		return false
+	end
+	for gx = -95, 95, 10 do
+		for gz = -95, 40, 11 do
+			if math.abs(gx) > 9 and math.abs(gz + 30) > 7 and not nearMaus(gx, gz) and rng:NextNumber() > 0.32 then
+				Build.tombstone(ctx.props, CFrame.new(ctx.w(gx + rng:NextNumber(-1.5, 1.5), gz)), rng)
+			end
+		end
+	end
+	-- Jazigos cercados com grade
+	for _, plot in { { -30, -78 }, { 30, -2 } } do
+		local x, z = plot[1], plot[2]
+		local y = 0
+		Build.bars(ctx.props, ctx.w(x - 6, z - 4, y), ctx.w(x + 6, z - 4, y), 4, 2)
+		Build.bars(ctx.props, ctx.w(x - 6, z + 4, y), ctx.w(x + 6, z + 4, y), 4, 2)
+		Build.bars(ctx.props, ctx.w(x - 6, z - 4, y), ctx.w(x - 6, z + 1, y), 4, 2)
+	end
+	for z = -100, 40, 28 do
+		Build.lamp(ctx.props, ctx.w(6, z), Color3.fromRGB(160, 200, 255))
+	end
+	local avoid: { Avoid } = { { p = Vector3.new(0, 0, 75), r = 30 }, { p = Vector3.new(0, 0, -100), r = 15 } }
+	for _, m in mausoleums do
+		table.insert(avoid, { p = m, r = 14 })
+	end
+	for _, p in scatter(ctx, 14, 16, avoid, 5) do
+		Build.tree(ctx.props, ctx.w(p.X, p.Z), rng, "dead")
+	end
+
+	-- Muro de pedra em volta, com portão de ferro ao sul
+	local wallModel = Build.model("Muro", ctx.props)
+	for _, s in { { 0, -h, h * 2, 2 }, { 0, h, h * 2, 2 }, { -h, 0, 2, h * 2 }, { h, 0, 2, h * 2 } } do
+		Build.box(wallModel, Vector3.new(s[3] + 2, 6, s[4] + 2), CFrame.new(ctx.w(s[1], s[2], 3)), Color3.fromRGB(80, 78, 80), Enum.Material.Cobblestone)
+	end
+	for i = -h, h, 23 do
+		for _, s in { { i, -h }, { i, h }, { -h, i }, { h, i } } do
+			Build.box(wallModel, Vector3.new(3, 8, 3), CFrame.new(ctx.w(s[1], s[2], 4)), Color3.fromRGB(70, 68, 72), Enum.Material.Cobblestone)
+		end
+	end
+	treeBorder(ctx, "dead")
+	bounds(ctx)
+
+	local gens = pick(ctx, {
+		Vector3.new(0, 0, 80),
+		Vector3.new(-44, 0, -50),
+		Vector3.new(44, 0, -50),
+		Vector3.new(-49, 0, 20),
+		Vector3.new(49, 0, 15),
+		Vector3.new(-30, 0, -74),
+		Vector3.new(30, 0, 2),
+		Vector3.new(-90, 0, 80),
+		Vector3.new(90, 0, 80),
+	}, Config.Generator.Count)
+	local generators = {}
+	for _, g in gens do
+		table.insert(generators, genCF(ctx, g.X, g.Z))
+	end
+	return {
+		survivorSpawns = ring(ctx.w(0, -100), 8, 7),
+		killerSpawn = ctx.w(0, 108, 3),
+		generators = generators,
+	}
+end
+
+---------------------------------------------------------------------------------
+-- 5) Floresta Sussurrante
+---------------------------------------------------------------------------------
+local function buildForest(ctx: Ctx): MapInfo
+	local rng = ctx.rng
+	ground(ctx, Enum.Material.LeafyGrass)
+	local lake = Vector3.new(45, 0, -35)
+	workspace.Terrain:FillBlock(CFrame.new(ctx.w(lake.X, lake.Z, -2.5)), Vector3.new(56, 5, 40), Enum.Material.Water)
+	strip(ctx, -50, 10, 8, 90, Enum.Material.Ground)
+
+	local cabin = Vector3.new(-50, 0, 45)
+	Build.building(ctx.props, CFrame.new(ctx.w(cabin.X, cabin.Z)) * CFrame.Angles(0, math.rad(20), 0), 20, 16, 10, {
+		name = "Cabana",
+		wallColor = C.Wood,
+		wallMat = Enum.Material.Wood,
+		roofColor = C.DarkWood,
+		doors = { front = true, back = true },
+		litWindows = true,
+	})
+	-- fogueira
+	local fire = ctx.w(-35, 25)
+	for i = 0, 3 do
+		Build.cylX(ctx.props, CFrame.new(fire + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, i * math.pi / 4, 0), 4, 0.7, C.DarkWood, Enum.Material.Wood)
+	end
+	local flame = Build.box(ctx.props, Vector3.new(1.4, 1.8, 1.4), CFrame.new(fire + Vector3.new(0, 1.4, 0)), Color3.fromRGB(255, 120, 30), Enum.Material.Neon, { CanCollide = false })
+	Build.light(flame, Color3.fromRGB(255, 120, 40), 30, 2, true)
+	for _ = 1, 10 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		Build.rock(ctx.props, ctx.w(lake.X + math.cos(a) * 30, lake.Z + math.sin(a) * 22), rng)
+	end
+
+	local gensLocal = scatter(ctx, Config.Generator.Count, 55, {
+		{ p = lake, r = 34 },
+		{ p = cabin, r = 16 },
+		{ p = Vector3.new(-85, 0, -85), r = 30 },
+	}, 18)
+	local avoid: { Avoid } = {
+		{ p = lake, r = 33 },
+		{ p = cabin, r = 18 },
+		{ p = Vector3.new(-35, 0, 25), r = 8 },
+		{ p = Vector3.new(-85, 0, -85), r = 14 },
+		{ p = Vector3.new(90, 0, 90), r = 10 },
+	}
+	for _, g in gensLocal do
+		table.insert(avoid, { p = g, r = 9 })
+	end
+	for _, p in scatter(ctx, 95, 10, avoid, 4) do
+		local r = rng:NextNumber()
+		Build.tree(ctx.props, ctx.w(p.X, p.Z), rng, if r < 0.4 then "pine" elseif r < 0.7 then "dead" else "leafy")
+	end
+	for _, p in scatter(ctx, 26, 12, avoid, 8) do
+		if rng:NextNumber() < 0.5 then
+			Build.log(ctx.props, ctx.w(p.X, p.Z), rng)
+		else
+			Build.rock(ctx.props, ctx.w(p.X, p.Z), rng, rng:NextNumber(0.8, 1.6))
+		end
+	end
+	treeBorder(ctx, "pine")
+	bounds(ctx)
+
+	local generators = {}
+	for _, g in gensLocal do
+		table.insert(generators, genCF(ctx, g.X, g.Z))
+	end
+	return {
+		survivorSpawns = ring(ctx.w(-85, -85), 8, 7),
+		killerSpawn = ctx.w(90, 90, 3),
+		generators = generators,
+	}
+end
+
+---------------------------------------------------------------------------------
+-- 6) Moinho Velho — colina com moinho, rio e plantações
+---------------------------------------------------------------------------------
+local function buildMill(ctx: Ctx): MapInfo
+	local rng = ctx.rng
+	ground(ctx, Enum.Material.Grass)
+	workspace.Terrain:FillBall(ctx.w(0, 0, -28), 38, Enum.Material.Grass)
+	workspace.Terrain:FillBlock(CFrame.new(ctx.w(0, 60, -2.5)), Vector3.new(ctx.half * 2 + 120, 5, 16), Enum.Material.Water)
+
+	Build.windmill(ctx.props, ctx.w(0, 0, 9), Vector3.new(0, 0, -1))
+
+	-- pontes sobre o rio
+	for _, bx in { -60, 60 } do
+		local bridge = Build.model("Ponte", ctx.props)
+		Build.box(bridge, Vector3.new(10, 1, 26), CFrame.new(ctx.w(bx, 60, 0.6)), C.OldWood, Enum.Material.WoodPlanks)
+		for _, sx in { -4.8, 4.8 } do
+			Build.box(bridge, Vector3.new(0.5, 3, 26), CFrame.new(ctx.w(bx + sx, 60, 2.6)), C.DarkWood, Enum.Material.Wood)
+		end
+		Build.part({
+			Parent = bridge,
+			ClassName = "WedgePart",
+			Size = Vector3.new(10, 1.1, 4),
+			CFrame = CFrame.new(ctx.w(bx, 45, 0.55)),
+			Color = C.OldWood,
+			Material = Enum.Material.WoodPlanks,
+		})
+		Build.part({
+			Parent = bridge,
+			ClassName = "WedgePart",
+			Size = Vector3.new(10, 1.1, 4),
+			CFrame = CFrame.new(ctx.w(bx, 75, 0.55)) * CFrame.Angles(0, math.pi, 0),
+			Color = C.OldWood,
+			Material = Enum.Material.WoodPlanks,
+		})
+	end
+
+	Build.crops(ctx.props, CFrame.new(ctx.w(-60, -50)), 48, 40, "wheat")
+	Build.crops(ctx.props, CFrame.new(ctx.w(65, -55)), 40, 40, "wheat")
+	Build.crops(ctx.props, CFrame.new(ctx.w(-70, 100)), 40, 22, "corn")
+	for _ = 1, 18 do
+		Build.pumpkin(ctx.props, ctx.w(60 + rng:NextNumber(-16, 16), 100 + rng:NextNumber(-10, 10)), rng:NextNumber() < 0.5, rng:NextNumber(0.8, 1.5))
+	end
+	Build.building(ctx.props, CFrame.new(ctx.w(92, -5)) * CFrame.Angles(0, math.rad(90), 0), 16, 12, 9, {
+		name = "Galpao",
+		wallColor = Color3.fromRGB(90, 80, 70),
+		roofColor = Color3.fromRGB(60, 56, 54),
+		roofMat = Enum.Material.CorrodedMetal,
+		doors = { front = true, back = true },
+	})
+	Build.scarecrow(ctx.props, CFrame.new(ctx.w(-60, -50)) * CFrame.Angles(0, 0.5, 0))
+	Build.scarecrow(ctx.props, CFrame.new(ctx.w(65, -55)) * CFrame.Angles(0, -0.5, 0))
+	Build.fence(ctx.props, ctx.w(-86, -72), ctx.w(-34, -72))
+	Build.fence(ctx.props, ctx.w(42, -78), ctx.w(88, -78))
+	Build.fence(ctx.props, ctx.w(-30, 30), ctx.w(30, 30))
+
+	local gens = pick(ctx, {
+		Vector3.new(0, 0, -16),
+		Vector3.new(-60, 0, -50),
+		Vector3.new(65, 0, -55),
+		Vector3.new(-70, 0, 88),
+		Vector3.new(60, 0, 100),
+		Vector3.new(92, 0, -5),
+		Vector3.new(-98, 0, 20),
+		Vector3.new(20, 0, -100),
+	}, Config.Generator.Count)
+	local avoid: { Avoid } = {
+		{ p = Vector3.new(0, 0, 0), r = 28 },
+		{ p = Vector3.new(0, 0, 60), r = 12 },
+		{ p = Vector3.new(-80, 0, -100), r = 14 },
+		{ p = Vector3.new(80, 0, 105), r = 12 },
+		{ p = Vector3.new(-60, 0, -50), r = 28 },
+		{ p = Vector3.new(65, 0, -55), r = 26 },
+		{ p = Vector3.new(60, 0, 100), r = 18 },
+	}
+	for _, g in gens do
+		table.insert(avoid, { p = g, r = 8 })
+	end
+	for _, p in scatter(ctx, 10, 12, avoid, 10) do
+		Build.haybale(ctx.props, CFrame.new(ctx.w(p.X, p.Z)) * CFrame.Angles(0, rng:NextNumber(0, 6), 0), rng:NextNumber() < 0.5)
+	end
+	for _, p in scatter(ctx, 18, 14, avoid, 4) do
+		Build.tree(ctx.props, ctx.w(p.X, p.Z), rng)
+	end
+	for _, p in { Vector3.new(-60, 0, 50), Vector3.new(60, 0, 50), Vector3.new(-20, 0, -30), Vector3.new(30, 0, 85), Vector3.new(-90, 0, -20) } do
+		Build.lamp(ctx.props, ctx.w(p.X, p.Z))
+	end
+	treeBorder(ctx)
+	fenceBorder(ctx)
+	bounds(ctx)
+
+	local generators = {}
+	for _, g in gens do
+		table.insert(generators, genCF(ctx, g.X, g.Z))
+	end
+	return {
+		survivorSpawns = ring(ctx.w(-80, -100), 8, 7),
+		killerSpawn = ctx.w(80, 105, 3),
+		generators = generators,
+	}
+end
+
+---------------------------------------------------------------------------------
+-- Lista de mapas (a cada votação, 4 deles são sorteados para os quadrados)
+---------------------------------------------------------------------------------
+Maps.List = {
+	{
+		id = "milharal",
+		name = "Milharal Maldito",
+		desc = "Um labirinto de milho onde algo se mexe entre as fileiras.",
+		color = Color3.fromRGB(190, 170, 60),
+		half = 117,
+		lighting = "Milharal",
+		build = buildCornMaze,
+	},
+	{
+		id = "celeiro",
+		name = "Celeiro Abandonado",
+		desc = "A fazenda dos Moraes. Ninguém voltou depois da última colheita.",
+		color = Color3.fromRGB(200, 50, 40),
+		half = 120,
+		lighting = "Celeiro",
+		build = buildBarnFarm,
+	},
+	{
+		id = "vila",
+		name = "Vila Esquecida",
+		desc = "Casas vazias, portas abertas e postes que piscam sozinhos.",
+		color = Color3.fromRGB(140, 100, 200),
+		half = 120,
+		lighting = "Vila",
+		build = buildVillage,
+	},
+	{
+		id = "cemiterio",
+		name = "Cemitério da Capela",
+		desc = "Túmulos tortos, mausoléus e um sino que toca sem vento.",
+		color = Color3.fromRGB(110, 150, 220),
+		half = 115,
+		lighting = "Cemiterio",
+		build = buildGraveyard,
+	},
+	{
+		id = "floresta",
+		name = "Floresta Sussurrante",
+		desc = "Neblina densa, uma cabana e um lago escuro.",
+		color = Color3.fromRGB(60, 160, 90),
+		half = 120,
+		lighting = "Floresta",
+		build = buildForest,
+	},
+	{
+		id = "moinho",
+		name = "Moinho Velho",
+		desc = "O moinho ainda gira... mas ninguém mora lá há anos.",
+		color = Color3.fromRGB(220, 130, 50),
+		half = 120,
+		lighting = "Moinho",
+		build = buildMill,
+	},
+} :: { MapDef }
+
+-- Sorteia `count` mapas diferentes para a votação
+function Maps.randomOptions(count: number): { MapDef }
+	local pool = table.clone(Maps.List)
+	local out = {}
+	for _ = 1, math.min(count, #pool) do
+		table.insert(out, table.remove(pool, math.random(1, #pool)) :: MapDef)
+	end
+	return out
+end
+
+export type LoadedMap = {
+	def: MapDef,
+	model: Model,
+	info: MapInfo,
+	destroy: () -> (),
+}
+
+function Maps.load(def: MapDef, seed: number?): LoadedMap
+	local center = Config.MAP_CENTER
+	local model = Build.model("Mapa_" .. def.id, workspace)
+	local props = Build.model("Objetos", model)
+	local ctx: Ctx = {
+		center = center,
+		half = def.half,
+		rng = Random.new(seed or os.time()),
+		model = model,
+		props = props,
+		w = function(x: number, z: number, y: number?): Vector3
+			return center + Vector3.new(x, y or 0, z)
+		end,
+	}
+	local info = def.build(ctx)
+
+	local size = def.half * 2 + 140
+	return {
+		def = def,
+		model = model,
+		info = info,
+		destroy = function()
+			model:Destroy()
+			workspace.Terrain:FillBlock(CFrame.new(center + Vector3.new(0, 15, 0)), Vector3.new(size, 70, size), Enum.Material.Air)
+		end,
+	}
+end
+
+return Maps
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX14">
+					<Properties>
+						<string name="Name">Roles</string>
+						<ProtectedString name="Source"><![CDATA[-- Roles: sobrevivente x assassino. Velocidade, estamina, ataque e habilidades.
+--
+-- Sobrevivente: Shift = correr (gasta estamina) | Q = Lanterna (atordoa o assassino)
+-- Assassino:    Clique/F = golpe de forcado | Q = Uivo (revela todos) | E = Investida
+
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Remotes = require(Shared:WaitForChild("Remotes"))
+
+local S = Config.Survivor
+local K = Config.Killer
+local ActionRemote = Remotes.get("Action")
+local Notify = Remotes.get("Notify")
+local Reveal = Remotes.get("Reveal")
+
+local Roles = {}
+
+type State = {
+	character: Model,
+	humanoid: Humanoid,
+	player: Player?,
+	role: string,
+	stamina: number,
+	sprinting: boolean,
+	lastSprint: number,
+	hurtUntil: number,
+	stunnedUntil: number,
+	frozenUntil: number,
+	dashUntil: number,
+	swinging: boolean,
+	cd: { [string]: number },
+	connections: { RBXScriptConnection },
+}
+
+local states: { [Model]: State } = {}
+
+-- Chamado pelo RoundManager quando um sobrevivente morre
+Roles.onSurvivorDied = nil :: ((player: Player?, character: Model) -> ())?
+
+local function now(): number
+	return os.clock()
+end
+
+local function newState(character: Model, humanoid: Humanoid, player: Player?, role: string): State
+	return {
+		character = character,
+		humanoid = humanoid,
+		player = player,
+		role = role,
+		stamina = S.MaxStamina,
+		sprinting = false,
+		lastSprint = 0,
+		hurtUntil = 0,
+		stunnedUntil = 0,
+		frozenUntil = 0,
+		dashUntil = 0,
+		swinging = false,
+		cd = {},
+		connections = {},
+	}
+end
+
+local function ready(st: State, name: string): boolean
+	return now() >= (st.cd[name] or 0)
+end
+
+local function startCooldown(st: State, name: string, duration: number)
+	st.cd[name] = now() + duration
+	if st.player then
+		st.player:SetAttribute("CD_" .. name, workspace:GetServerTimeNow() + duration)
+		st.player:SetAttribute("CDMAX_" .. name, duration)
+	end
+end
+
+local function clearCooldownAttributes(player: Player)
+	for _, name in { "Attack", "Lantern", "Howl", "Dash" } do
+		player:SetAttribute("CD_" .. name, nil)
+		player:SetAttribute("CDMAX_" .. name, nil)
+	end
+end
+
+local function rootOf(character: Model): BasePart?
+	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function alive(st: State?): boolean
+	return st ~= nil and st.character.Parent ~= nil and st.humanoid.Health > 0
+end
+
+function Roles.getKiller(): State?
+	for _, st in states do
+		if st.role == "Killer" and alive(st) then
+			return st
+		end
+	end
+	return nil
+end
+
+function Roles.survivors(): { State }
+	local out = {}
+	for _, st in states do
+		if st.role == "Survivor" and alive(st) then
+			table.insert(out, st)
+		end
+	end
+	return out
+end
+
+function Roles.stateOf(character: Model): State?
+	return states[character]
+end
+
+---------------------------------------------------------------------------------
+-- Visual do assassino: "O Espantalho" (saco de estopa, chapéu de palha e forcado)
+---------------------------------------------------------------------------------
+local function weldPart(parent: Instance, attach: BasePart, props: { [string]: any }): BasePart
+	local p = Instance.new(props.ClassName or "Part") :: BasePart
+	p.Anchored = false
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Massless = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for k, v in props do
+		if k ~= "ClassName" and k ~= "Mesh" then
+			(p :: any)[k] = v
+		end
+	end
+	if props.Mesh then
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = props.Mesh
+		mesh.Parent = p
+	end
+	p.Parent = parent
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = attach
+	weld.Part1 = p
+	weld.Parent = p
+	return p
+end
+
+local function dressKiller(character: Model)
+	for _, d in character:GetChildren() do
+		if d:IsA("Accessory") or d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") or d:IsA("BodyColors") then
+			d:Destroy()
+		end
+	end
+	local torsoColor = Color3.fromRGB(70, 58, 78)
+	local legColor = Color3.fromRGB(52, 42, 34)
+	local skin = Color3.fromRGB(150, 120, 80)
+	for _, part in character:GetChildren() do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			local n = part.Name
+			if n:find("Leg") or n:find("Foot") then
+				part.Color = legColor
+			elseif n:find("Hand") or n == "Head" then
+				part.Color = skin
+			else
+				part.Color = torsoColor
+			end
+			part.Material = Enum.Material.Fabric
+			for _, child in part:GetChildren() do
+				if child:IsA("SurfaceAppearance") then
+					child:Destroy()
+				end
+			end
+			if part:IsA("MeshPart") then
+				pcall(function()
+					part.TextureID = ""
+				end)
+			end
+		end
+	end
+
+	local head = character:FindFirstChild("Head") :: BasePart?
+	if head then
+		for _, d in head:GetChildren() do
+			if d:IsA("Decal") then
+				d:Destroy()
+			end
+		end
+		head.Transparency = 1
+		local acc = Instance.new("Model")
+		acc.Name = "Cabeca"
+		acc.Parent = character
+		local hcf = head.CFrame
+		weldPart(acc, head, { Name = "Saco", Size = Vector3.new(1.6, 1.75, 1.6), CFrame = hcf * CFrame.new(0, 0.1, 0), Color = Color3.fromRGB(150, 122, 82), Material = Enum.Material.Fabric, Mesh = Enum.MeshType.Sphere })
+		for _, x in { -0.3, 0.3 } do
+			local eye = weldPart(acc, head, { Name = "Olho", Shape = Enum.PartType.Ball, Size = Vector3.new(0.26, 0.26, 0.26), CFrame = hcf * CFrame.new(x, 0.25, -0.74), Color = Color3.fromRGB(255, 30, 20), Material = Enum.Material.Neon })
+			if x > 0 then
+				local l = Instance.new("PointLight")
+				l.Color = Color3.fromRGB(255, 30, 20)
+				l.Range = 7
+				l.Brightness = 2
+				l.Parent = eye
+			end
+		end
+		-- boca costurada
+		weldPart(acc, head, { Name = "Boca", Size = Vector3.new(0.9, 0.07, 0.05), CFrame = hcf * CFrame.new(0, -0.3, -0.78), Color = Color3.fromRGB(30, 18, 12), Material = Enum.Material.Fabric })
+		for i = -2, 2 do
+			weldPart(acc, head, { Name = "Ponto", Size = Vector3.new(0.05, 0.22, 0.05), CFrame = hcf * CFrame.new(i * 0.18, -0.3, -0.79), Color = Color3.fromRGB(30, 18, 12), Material = Enum.Material.Fabric })
+		end
+		-- corda no pescoço
+		weldPart(acc, head, { Name = "Corda", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.18, 1.4, 1.4), CFrame = hcf * CFrame.new(0, -0.7, 0) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(120, 96, 60), Material = Enum.Material.Fabric })
+		-- chapéu de palha
+		local tilt = hcf * CFrame.Angles(0, 0, math.rad(8))
+		weldPart(acc, head, { Name = "Aba", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.14, 3.2, 3.2), CFrame = tilt * CFrame.new(0, 0.95, 0) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(176, 146, 80), Material = Enum.Material.Fabric })
+		weldPart(acc, head, { Name = "Copa", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.9, 1.5, 1.5), CFrame = tilt * CFrame.new(0, 1.45, 0) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(168, 138, 74), Material = Enum.Material.Fabric })
+	end
+
+	-- palha saindo dos pulsos
+	for _, n in { "RightHand", "LeftHand", "Right Arm", "Left Arm" } do
+		local hand = character:FindFirstChild(n) :: BasePart?
+		if hand then
+			local y = if n:find("Arm") then -0.9 else 0.1
+			weldPart(character, hand, { Name = "Palha", Size = Vector3.new(0.9, 0.5, 0.9), CFrame = hand.CFrame * CFrame.new(0, y, 0) * CFrame.Angles(0, 0.5, 0.3), Color = Color3.fromRGB(196, 160, 80), Material = Enum.Material.Grass })
+		end
+	end
+
+	-- forcado na mão direita
+	local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+	if hand and hand:IsA("BasePart") then
+		local grip = hand.CFrame
+		if hand.Name == "Right Arm" then
+			grip = grip * CFrame.new(0, -1, 0)
+		end
+		local dir = Vector3.new(0, -0.5, -0.866)
+		local f = grip * CFrame.fromMatrix(Vector3.zero, Vector3.new(1, 0, 0), dir)
+		local fork = Instance.new("Model")
+		fork.Name = "Forcado"
+		fork.Parent = character
+		local rust = Color3.fromRGB(70, 60, 56)
+		weldPart(fork, hand, { Name = "Cabo", Shape = Enum.PartType.Cylinder, Size = Vector3.new(6.5, 0.28, 0.28), CFrame = f * CFrame.new(0, 0.75, 0) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(80, 56, 36), Material = Enum.Material.Wood })
+		weldPart(fork, hand, { Name = "Travessa", Size = Vector3.new(1.7, 0.22, 0.22), CFrame = f * CFrame.new(0, 4.05, 0), Color = rust, Material = Enum.Material.CorrodedMetal })
+		for _, x in { -0.75, 0, 0.75 } do
+			weldPart(fork, hand, { Name = "Dente", Size = Vector3.new(0.14, 1.9, 0.14), CFrame = f * CFrame.new(x, 5, 0), Color = rust, Material = Enum.Material.CorrodedMetal })
+		end
+	end
+end
+
+---------------------------------------------------------------------------------
+-- Animação simples do golpe (gira o ombro direito)
+---------------------------------------------------------------------------------
+local function shoulderOf(character: Model): (Motor6D?, boolean)
+	local upper = character:FindFirstChild("RightUpperArm")
+	if upper then
+		return upper:FindFirstChild("RightShoulder") :: Motor6D?, true
+	end
+	local torso = character:FindFirstChild("Torso")
+	if torso then
+		return torso:FindFirstChild("Right Shoulder") :: Motor6D?, false
+	end
+	return nil, false
+end
+
+local function swing(st: State)
+	local motor, r15 = shoulderOf(st.character)
+	if not motor or st.swinging then
+		return
+	end
+	st.swinging = true
+	local base = motor.C0
+	local function rot(a: number): CFrame
+		return if r15 then base * CFrame.Angles(a, 0, 0) else base * CFrame.Angles(0, 0, a)
+	end
+	local t1 = TweenService:Create(motor, TweenInfo.new(0.1, Enum.EasingStyle.Quad), { C0 = rot(2.5) })
+	local t2 = TweenService:Create(motor, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { C0 = rot(0.9) })
+	local t3 = TweenService:Create(motor, TweenInfo.new(0.3, Enum.EasingStyle.Sine), { C0 = base })
+	t1:Play()
+	t1.Completed:Once(function()
+		t2:Play()
+	end)
+	t2.Completed:Once(function()
+		t3:Play()
+	end)
+	t3.Completed:Once(function()
+		st.swinging = false
+	end)
+	task.delay(1, function()
+		st.swinging = false
+	end)
+end
+
+local function playSound(parent: Instance, id: string, volume: number?)
+	if id == "" then
+		return
+	end
+	local s = Instance.new("Sound")
+	s.SoundId = id
+	s.Volume = volume or 1
+	s.RollOffMaxDistance = 120
+	s.Parent = parent
+	s:Play()
+	s.Ended:Once(function()
+		s:Destroy()
+	end)
+	task.delay(5, function()
+		if s.Parent then
+			s:Destroy()
+		end
+	end)
+end
+
+---------------------------------------------------------------------------------
+-- Ações
+---------------------------------------------------------------------------------
+function Roles.attack(character: Model)
+	local st = states[character]
+	if not st or st.role ~= "Killer" or not alive(st) then
+		return
+	end
+	local t = now()
+	if not ready(st, "Attack") or t < st.stunnedUntil or t < st.frozenUntil then
+		return
+	end
+	startCooldown(st, "Attack", K.AttackCooldown)
+	swing(st)
+	local root = rootOf(character)
+	if root then
+		playSound(root, Config.Sounds.Attack, 0.8)
+	end
+	task.delay(0.2, function()
+		local r = rootOf(character)
+		if not r or not alive(st) then
+			return
+		end
+		for _, target in Roles.survivors() do
+			local tr = rootOf(target.character)
+			if tr then
+				local offset = tr.Position - r.Position
+				if offset.Magnitude <= K.AttackRange then
+					local flat = Vector3.new(offset.X, 0, offset.Z)
+					local facing = if flat.Magnitude > 0.5 then r.CFrame.LookVector:Dot(flat.Unit) else 1
+					if facing > 0.15 then
+						target.humanoid:TakeDamage(K.AttackDamage)
+						target.hurtUntil = now() + S.HurtBoostTime
+						if target.player then
+							Notify:FireClient(target.player, "Você foi atingido! CORRA!", Color3.fromRGB(255, 60, 50))
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+function Roles.dash(character: Model)
+	local st = states[character]
+	if not st or st.role ~= "Killer" or not alive(st) then
+		return
+	end
+	if not ready(st, "Dash") or now() < st.frozenUntil or now() < st.stunnedUntil then
+		return
+	end
+	startCooldown(st, "Dash", K.DashCooldown)
+	st.dashUntil = now() + K.DashTime
+end
+
+function Roles.howl(character: Model)
+	local st = states[character]
+	if not st or st.role ~= "Killer" or not alive(st) then
+		return
+	end
+	if not ready(st, "Howl") or now() < st.frozenUntil then
+		return
+	end
+	startCooldown(st, "Howl", K.HowlCooldown)
+	local targets = {}
+	for _, s in Roles.survivors() do
+		table.insert(targets, s.character)
+		if s.player then
+			Notify:FireClient(s.player, "O Espantalho farejou você...", Color3.fromRGB(255, 80, 60))
+		end
+	end
+	if st.player then
+		Reveal:FireClient(st.player, targets, K.HowlDuration)
+	end
+end
+
+function Roles.lantern(character: Model)
+	local st = states[character]
+	if not st or st.role ~= "Survivor" or not alive(st) then
+		return
+	end
+	if not ready(st, "Lantern") then
+		return
+	end
+	startCooldown(st, "Lantern", S.LanternCooldown)
+	local head = character:FindFirstChild("Head") :: BasePart?
+	if head then
+		local flash = Instance.new("SpotLight")
+		flash.Brightness = 12
+		flash.Range = S.LanternRange + 6
+		flash.Angle = 70
+		flash.Color = Color3.fromRGB(255, 250, 220)
+		flash.Face = Enum.NormalId.Front
+		flash.Parent = head
+		task.delay(0.35, function()
+			flash:Destroy()
+		end)
+	end
+	local killer = Roles.getKiller()
+	local root = rootOf(character)
+	if not killer or not root then
+		return
+	end
+	local kroot = rootOf(killer.character)
+	if not kroot then
+		return
+	end
+	local offset = kroot.Position - root.Position
+	if offset.Magnitude > S.LanternRange then
+		return
+	end
+	local flat = Vector3.new(offset.X, 0, offset.Z)
+	if flat.Magnitude > 0.5 and root.CFrame.LookVector:Dot(flat.Unit) < 0.55 then
+		return
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character, killer.character }
+	if workspace:Raycast(root.Position, offset, params) then
+		return -- tem uma parede no caminho
+	end
+	killer.stunnedUntil = now() + S.LanternStun
+	killer.character:SetAttribute("Stunned", true)
+	task.delay(S.LanternStun, function()
+		if killer.character.Parent then
+			killer.character:SetAttribute("Stunned", false)
+		end
+	end)
+	if st.player then
+		Notify:FireClient(st.player, "Você cegou o Espantalho! Fuja!", Color3.fromRGB(255, 240, 160))
+	end
+	if killer.player then
+		Notify:FireClient(killer.player, "Você foi cegado pela lanterna!", Color3.fromRGB(255, 240, 160))
+	end
+end
+
+---------------------------------------------------------------------------------
+-- Montar papéis
+---------------------------------------------------------------------------------
+local function register(character: Model, player: Player?, role: string): State?
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return nil
+	end
+	local st = newState(character, humanoid, player, role)
+	states[character] = st
+	if player then
+		player:SetAttribute("Role", role)
+		player:SetAttribute("Stamina", S.MaxStamina)
+		clearCooldownAttributes(player)
+	end
+	table.insert(st.connections, humanoid.Died:Connect(function()
+		if role == "Survivor" then
+			if player then
+				player:SetAttribute("Role", "Lobby")
+			end
+			states[character] = nil
+			if Roles.onSurvivorDied then
+				Roles.onSurvivorDied(player, character)
+			end
+		end
+	end))
+	return st
+end
+
+function Roles.makeSurvivor(player: Player): boolean
+	local character = player.Character
+	if not character then
+		return false
+	end
+	local st = register(character, player, "Survivor")
+	if not st then
+		return false
+	end
+	st.humanoid.MaxHealth = S.Health
+	st.humanoid.Health = S.Health
+	st.humanoid.WalkSpeed = S.WalkSpeed
+	return true
+end
+
+function Roles.makeKiller(character: Model, player: Player?): boolean
+	local st = register(character, player, "Killer")
+	if not st then
+		return false
+	end
+	dressKiller(character)
+	st.humanoid.MaxHealth = 1e6
+	st.humanoid.Health = 1e6
+	st.humanoid.WalkSpeed = K.WalkSpeed
+	st.humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	st.humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	CollectionService:AddTag(character, "KillerCharacter")
+	return true
+end
+
+function Roles.freezeKiller(seconds: number)
+	local k = Roles.getKiller()
+	if k then
+		k.frozenUntil = now() + seconds
+		k.character:SetAttribute("Frozen", true)
+		task.delay(seconds, function()
+			if k.character.Parent then
+				k.character:SetAttribute("Frozen", false)
+			end
+		end)
+	end
+end
+
+-- Volta todo mundo ao estado de lobby
+function Roles.reset()
+	for character, st in states do
+		for _, c in st.connections do
+			c:Disconnect()
+		end
+		CollectionService:RemoveTag(character, "KillerCharacter")
+	end
+	table.clear(states)
+	for _, p in Players:GetPlayers() do
+		p:SetAttribute("Role", "Lobby")
+		p:SetAttribute("Stamina", nil)
+		clearCooldownAttributes(p)
+	end
+end
+
+function Roles.forget(character: Model)
+	local st = states[character]
+	if st then
+		for _, c in st.connections do
+			c:Disconnect()
+		end
+		states[character] = nil
+	end
+end
+
+---------------------------------------------------------------------------------
+-- Loop de movimento
+---------------------------------------------------------------------------------
+RunService.Heartbeat:Connect(function(dt)
+	local t = now()
+	for character, st in states do
+		if not character.Parent then
+			states[character] = nil
+			continue
+		end
+		local hum = st.humanoid
+		if hum.Health <= 0 then
+			continue
+		end
+		local speed
+		if st.role == "Survivor" then
+			local moving = hum.MoveDirection.Magnitude > 0.1
+			if st.sprinting and moving and st.stamina > 0 then
+				st.stamina = math.max(0, st.stamina - S.StaminaDrain * dt)
+				st.lastSprint = t
+				speed = S.SprintSpeed
+			else
+				if t - st.lastSprint > S.RegenDelay then
+					st.stamina = math.min(S.MaxStamina, st.stamina + S.StaminaRegen * dt)
+				end
+				speed = S.WalkSpeed
+			end
+			if t < st.hurtUntil then
+				speed = math.max(speed, S.HurtBoostSpeed)
+			end
+			if st.player then
+				local rounded = math.floor(st.stamina + 0.5)
+				if st.player:GetAttribute("Stamina") ~= rounded then
+					st.player:SetAttribute("Stamina", rounded)
+				end
+			end
+		else
+			if t < st.frozenUntil or t < st.stunnedUntil then
+				speed = 0
+			elseif t < st.dashUntil then
+				speed = K.DashSpeed
+			else
+				speed = K.WalkSpeed
+			end
+		end
+		if hum.WalkSpeed ~= speed then
+			hum.WalkSpeed = speed
+		end
+	end
+end)
+
+-- Ações vindas dos clientes
+ActionRemote.OnServerEvent:Connect(function(player: Player, action: any, value: any)
+	if typeof(action) ~= "string" then
+		return
+	end
+	local character = player.Character
+	if not character then
+		return
+	end
+	local st = states[character]
+	if not st then
+		return
+	end
+	if action == "Sprint" then
+		st.sprinting = value == true
+	elseif action == "Attack" then
+		Roles.attack(character)
+	elseif action == "Ability1" then
+		if st.role == "Killer" then
+			Roles.howl(character)
+		else
+			Roles.lantern(character)
+		end
+	elseif action == "Ability2" then
+		if st.role == "Killer" then
+			Roles.dash(character)
+		end
+	end
+end)
+
+return Roles
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX15">
+					<Properties>
+						<string name="Name">RoundManager</string>
+						<ProtectedString name="Source"><![CDATA[-- RoundManager: o ciclo do jogo.
+--   1) Votação no lobby (30 s) nos 4 quadrados
+--   2) Sorteio do assassino (quem não foi assassino ganha mais chance)
+--   3) Partida no mapa escolhido
+--   4) Resultado e volta ao lobby -> repete
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Modules = script.Parent
+local Atmosphere = require(Modules.Atmosphere)
+local Generators = require(Modules.Generators)
+local KillerBot = require(Modules.KillerBot)
+local Maps = require(Modules.Maps)
+local Roles = require(Modules.Roles)
+local Voting = require(Modules.Voting)
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Remotes = require(Shared:WaitForChild("Remotes"))
+
+local Notify = Remotes.get("Notify")
+local ResultRemote = Remotes.get("Result")
+
+local RoundManager = {}
+
+-- o que precisa ser limpo se algo der errado no meio da partida
+local current: { destroyMap: (() -> ())?, bot: Model? } = { destroyMap = nil, bot = nil }
+
+local function cleanupWorld()
+	if current.bot then
+		current.bot:Destroy()
+		current.bot = nil
+	end
+	if current.destroyMap then
+		current.destroyMap()
+		current.destroyMap = nil
+	end
+end
+
+-- Estado visível para os clientes (atributos no ReplicatedStorage)
+local function set(name: string, value: any)
+	ReplicatedStorage:SetAttribute(name, value)
+end
+
+local function status(text: string)
+	set("Status", text)
+end
+
+local function broadcast(text: string, color: Color3?)
+	for _, p in Players:GetPlayers() do
+		Notify:FireClient(p, text, color)
+	end
+end
+
+local function aliveCharacter(player: Player): Model?
+	local char = player.Character
+	if not char or not char.Parent then
+		return nil
+	end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if hum and root and hum.Health > 0 then
+		return char
+	end
+	return nil
+end
+
+local function requiredPlayers(): number
+	return if Config.SOLO_BOT then 1 else Config.MIN_PLAYERS_FOR_PVP
+end
+
+-- Sorteio com peso: cada partida sem ser assassino aumenta a chance
+local function pickKiller(candidates: { Player }): Player
+	local total = 0
+	for _, p in candidates do
+		total += math.max(0, p:GetAttribute("Chance") or 1)
+	end
+	if total <= 0 then
+		return candidates[math.random(1, #candidates)]
+	end
+	local roll = math.random() * total
+	for _, p in candidates do
+		roll -= math.max(0, p:GetAttribute("Chance") or 1)
+		if roll <= 0 then
+			return p
+		end
+	end
+	return candidates[#candidates]
+end
+
+local function teleport(player: Player?, character: Model, position: Vector3)
+	if player then
+		pcall(function()
+			player:RequestStreamAroundAsync(position, 5)
+		end)
+	end
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+	end
+	character:PivotTo(CFrame.new(position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, math.random() * math.pi * 2, 0))
+end
+
+local function addWin(player: Player)
+	local stats = player:FindFirstChild("leaderstats")
+	local wins = stats and stats:FindFirstChild("Vitorias")
+	if wins and wins:IsA("IntValue") then
+		wins.Value += 1
+	end
+end
+
+---------------------------------------------------------------------------------
+-- 1) Intervalo / votação
+---------------------------------------------------------------------------------
+local function intermission()
+	Atmosphere.apply("Lobby")
+	-- espera ter gente suficiente
+	while #Players:GetPlayers() < requiredPlayers() do
+		set("Phase", "Esperando")
+		set("TimeLeft", 0)
+		status("Aguardando jogadores...")
+		Voting.showIdle("Aguardando jogadores...")
+		task.wait(1)
+	end
+
+	local options = Maps.randomOptions(Config.VOTE_OPTIONS)
+	Voting.start(options)
+	set("Phase", "Votacao")
+	status("Pise num quadrado para votar no próximo mapa!")
+	for t = Config.INTERMISSION_TIME, 1, -1 do
+		set("TimeLeft", t)
+		task.wait(1)
+	end
+	set("TimeLeft", 0)
+	local def, votes = Voting.stop()
+	set("MapName", def.name)
+	status(("Mapa escolhido: %s (%d votos)"):format(def.name, math.max(votes, 0)))
+	broadcast("Mapa escolhido: " .. def.name, def.color)
+	task.wait(3)
+	return def
+end
+
+---------------------------------------------------------------------------------
+-- 2/3) Partida
+---------------------------------------------------------------------------------
+local function playRound(def)
+	set("Phase", "Preparando")
+	status("Preparando " .. def.name .. "...")
+
+	-- quem vai jogar: todo mundo vivo no lobby
+	local participants: { Player } = {}
+	for _, p in Players:GetPlayers() do
+		if aliveCharacter(p) then
+			table.insert(participants, p)
+		end
+	end
+	if #participants == 0 then
+		return
+	end
+	local useBot = #participants < Config.MIN_PLAYERS_FOR_PVP
+	if useBot and not Config.SOLO_BOT then
+		status("Jogadores insuficientes.")
+		task.wait(2)
+		return
+	end
+
+	local loaded = Maps.load(def, math.random(1, 1e6))
+	current.destroyMap = loaded.destroy
+	Atmosphere.apply(def.lighting)
+	local info = loaded.info
+
+	-- escolhe o assassino
+	local killerPlayer: Player? = nil
+	if not useBot then
+		killerPlayer = pickKiller(participants)
+	end
+	for _, p in participants do
+		if p == killerPlayer then
+			p:SetAttribute("Chance", 0)
+		else
+			p:SetAttribute("Chance", (p:GetAttribute("Chance") or 1) + 1)
+		end
+	end
+
+	-- coloca todos no mapa
+	local survivorsAtStart: { Player } = {}
+	local spawnIndex = 0
+	for _, p in participants do
+		local char = aliveCharacter(p)
+		if char then
+			if p == killerPlayer then
+				teleport(p, char, info.killerSpawn)
+				Roles.makeKiller(char, p)
+			else
+				spawnIndex += 1
+				local pos = info.survivorSpawns[(spawnIndex - 1) % #info.survivorSpawns + 1]
+				teleport(p, char, pos)
+				if Roles.makeSurvivor(p) then
+					table.insert(survivorsAtStart, p)
+				end
+			end
+		end
+	end
+	local bot: Model? = nil
+	if useBot then
+		bot = KillerBot.spawn(info.killerSpawn)
+		current.bot = bot
+	end
+	local killerName = if killerPlayer then killerPlayer.DisplayName else "Bot"
+	set("Killer", killerName)
+
+	-- geradores
+	local roundTime = Config.ROUND_TIME
+	local timeLeft = roundTime
+	local gens = Generators.spawn(loaded.model, info.generators, function(_gen, player, doneCount)
+		timeLeft = math.max(10, timeLeft - Config.Generator.TimeReduction)
+		set("GensDone", doneCount)
+		broadcast(("%s consertou um gerador! (%d/%d) -%ds"):format(player.DisplayName, doneCount, #info.generators, Config.Generator.TimeReduction), Color3.fromRGB(120, 255, 120))
+	end)
+	set("GensDone", 0)
+	set("GensTotal", gens.total)
+
+	-- mortes
+	local deaths = 0
+	Roles.onSurvivorDied = function(player: Player?, _character: Model)
+		deaths += 1
+		if player then
+			broadcast(player.DisplayName .. " foi pego pelo Espantalho...", Color3.fromRGB(255, 60, 50))
+		end
+	end
+
+	-- assassino preso no começo
+	Roles.freezeKiller(Config.KILLER_RELEASE_DELAY)
+	set("Phase", "Partida")
+	for t = Config.KILLER_RELEASE_DELAY, 1, -1 do
+		status(("O Espantalho desperta em %d..."):format(t))
+		set("TimeLeft", math.ceil(timeLeft))
+		task.wait(1)
+	end
+	broadcast("O ESPANTALHO DESPERTOU!", Color3.fromRGB(255, 40, 30))
+	status("Sobreviva! Conserte os geradores para acelerar o relógio.")
+
+	-- loop da partida
+	local winner: string? = nil
+	local last = os.clock()
+	while true do
+		task.wait(0.25)
+		local t = os.clock()
+		timeLeft -= (t - last)
+		last = t
+		set("TimeLeft", math.max(0, math.ceil(timeLeft)))
+
+		local aliveSurvivors = #Roles.survivors()
+		local killer = Roles.getKiller()
+		if aliveSurvivors == 0 then
+			winner = "Killer"
+			break
+		end
+		if not killer then
+			winner = "Survivors"
+			break
+		end
+		if timeLeft <= 0 then
+			winner = "Survivors"
+			break
+		end
+	end
+
+	-- 4) resultado
+	set("Phase", "Fim")
+	set("TimeLeft", 0)
+	local survivorsAlive = {}
+	for _, s in Roles.survivors() do
+		if s.player then
+			table.insert(survivorsAlive, s.player)
+		end
+	end
+	local title, subtitle
+	if winner == "Killer" then
+		title = "O ESPANTALHO VENCEU"
+		subtitle = "Ninguém escapou da colheita."
+		if killerPlayer and killerPlayer.Parent then
+			addWin(killerPlayer)
+		end
+	else
+		title = "OS SOBREVIVENTES VENCERAM"
+		local names = {}
+		for _, p in survivorsAlive do
+			addWin(p)
+			table.insert(names, p.DisplayName)
+		end
+		subtitle = if #names > 0 then "Sobreviveram: " .. table.concat(names, ", ") else "O Espantalho fugiu."
+	end
+	status(title)
+	for _, p in Players:GetPlayers() do
+		ResultRemote:FireClient(p, winner, title, subtitle)
+	end
+	task.wait(Config.RESULT_TIME)
+
+	-- limpa tudo e volta ao lobby
+	Roles.onSurvivorDied = nil
+	Roles.reset()
+	for _, p in Players:GetPlayers() do
+		local char = p.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+		-- quem ainda está no mapa renasce no lobby
+		if root and (root.Position - Config.MAP_CENTER).Magnitude < 600 then
+			p:LoadCharacter()
+		end
+	end
+	cleanupWorld()
+	set("Killer", "")
+	set("MapName", "")
+	set("GensDone", 0)
+	set("GensTotal", 0)
+end
+
+function RoundManager.run()
+	set("Phase", "Esperando")
+	set("TimeLeft", 0)
+	set("Status", "")
+	while true do
+		local ok, err = pcall(function()
+			local def = intermission()
+			playRound(def)
+		end)
+		if not ok then
+			warn("[RoundManager] erro na partida:", err)
+			Roles.onSurvivorDied = nil
+			Roles.reset()
+			cleanupWorld()
+			for _, p in Players:GetPlayers() do
+				if p.Character then
+					p:LoadCharacter()
+				end
+			end
+			task.wait(2)
+		end
+	end
+end
+
+return RoundManager
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX16">
+					<Properties>
+						<string name="Name">Voting</string>
+						<ProtectedString name="Source"><![CDATA[-- Voting: o jogador vota pisando num dos 4 quadrados do lobby.
+-- O voto fica valendo até ele pisar em outro quadrado.
+
+local Players = game:GetService("Players")
+
+local Voting = {}
+
+local pads = {}
+local options = {}
+local votes: { [Player]: number } = {}
+local active = false
+local loopThread: thread? = nil
+
+local NEUTRAL = Color3.fromRGB(70, 70, 70)
+
+function Voting.setup(lobbyPads)
+	pads = lobbyPads
+	Voting.showIdle("Aguarde a próxima votação...")
+end
+
+local function padUnder(character: Model): number?
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return nil
+	end
+	local pos = root.Position
+	for _, pad in pads do
+		local c = pad.center
+		if math.abs(pos.X - c.X) <= pad.half and math.abs(pos.Z - c.Z) <= pad.half and pos.Y > c.Y - 1 and pos.Y < c.Y + 9 then
+			return pad.index
+		end
+	end
+	return nil
+end
+
+local function counts(): { number }
+	local out = {}
+	for i = 1, #pads do
+		out[i] = 0
+	end
+	for player, index in votes do
+		if player.Parent and out[index] then
+			out[index] += 1
+		end
+	end
+	return out
+end
+
+local function refresh()
+	local c = counts()
+	for i, pad in pads do
+		local n = c[i] or 0
+		pad.votes.Text = if n == 1 then "1 voto" else n .. " votos"
+		pad.glow.Transparency = if n > 0 then 0.25 else 0.55
+	end
+end
+
+function Voting.showIdle(text: string)
+	for _, pad in pads do
+		pad.title.Text = "..."
+		pad.desc.Text = text
+		pad.votes.Text = ""
+		pad.bar.BackgroundColor3 = NEUTRAL
+		pad.glow.Color = NEUTRAL
+		pad.glow.Transparency = 0.7
+		for _, b in pad.borders do
+			b.Color = NEUTRAL
+		end
+		local light = pad.glow:FindFirstChildOfClass("PointLight")
+		if light then
+			light.Color = NEUTRAL
+		end
+	end
+end
+
+-- Começa uma votação com a lista de mapas (um por quadrado)
+function Voting.start(mapOptions)
+	options = mapOptions
+	table.clear(votes)
+	for i, pad in pads do
+		local def = options[i]
+		if def then
+			pad.title.Text = def.name
+			pad.desc.Text = def.desc
+			pad.bar.BackgroundColor3 = def.color
+			pad.glow.Color = def.color
+			for _, b in pad.borders do
+				b.Color = def.color
+			end
+			local light = pad.glow:FindFirstChildOfClass("PointLight")
+			if light then
+				light.Color = def.color
+			end
+		end
+	end
+	for _, player in Players:GetPlayers() do
+		player:SetAttribute("Vote", "")
+	end
+	active = true
+	refresh()
+	loopThread = task.spawn(function()
+		while active do
+			local changed = false
+			for _, player in Players:GetPlayers() do
+				local char = player.Character
+				if char then
+					local index = padUnder(char)
+					if index and options[index] and votes[player] ~= index then
+						votes[player] = index
+						player:SetAttribute("Vote", options[index].name)
+						changed = true
+					end
+				end
+			end
+			for player in votes do
+				if not player.Parent then
+					votes[player] = nil
+					changed = true
+				end
+			end
+			if changed then
+				refresh()
+			end
+			task.wait(0.2)
+		end
+	end)
+end
+
+-- Termina a votação e devolve o mapa vencedor (empate = sorteio)
+function Voting.stop()
+	active = false
+	if loopThread and coroutine.status(loopThread) == "suspended" then
+		task.cancel(loopThread)
+	end
+	loopThread = nil
+	local c = counts()
+	local best, winners = -1, {}
+	for i = 1, #options do
+		local n = c[i] or 0
+		if n > best then
+			best = n
+			winners = { i }
+		elseif n == best then
+			table.insert(winners, i)
+		end
+	end
+	local index = winners[math.random(1, #winners)]
+	for _, player in Players:GetPlayers() do
+		player:SetAttribute("Vote", "")
+	end
+	-- destaca o vencedor
+	for i, pad in pads do
+		pad.glow.Transparency = if i == index then 0 else 0.8
+	end
+	return options[index], best
+end
+
+return Voting
+]]></ProtectedString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+	</Item>
+	<Item class="StarterPlayer" referent="RBX17">
+		<Properties>
+			<string name="Name">StarterPlayer</string>
+		</Properties>
+		<Item class="StarterPlayerScripts" referent="RBX18">
+			<Properties>
+				<string name="Name">StarterPlayerScripts</string>
+			</Properties>
+			<Item class="Folder" referent="RBX19">
+				<Properties>
+					<string name="Name">Client</string>
+				</Properties>
+				<Item class="ModuleScript" referent="RBX20">
+					<Properties>
+						<string name="Name">Hud</string>
+						<ProtectedString name="Source"><![CDATA[-- Hud: a interface na tela (relógio, papel, vida, estamina, habilidades, avisos).
+
+local TweenService = game:GetService("TweenService")
+
+local Hud = {}
+
+local function new(className: string, props: { [string]: any }): any
+	local inst = Instance.new(className)
+	for k, v in props do
+		if k ~= "Parent" then
+			(inst :: any)[k] = v
+		end
+	end
+	inst.Parent = props.Parent
+	return inst
+end
+
+local function corner(parent: Instance, r: number?)
+	new("UICorner", { Parent = parent, CornerRadius = UDim.new(0, r or 8) })
+end
+
+local function bar(parent: Instance, pos: UDim2, size: UDim2, color: Color3, labelText: string)
+	local back = new("Frame", {
+		Parent = parent,
+		Position = pos,
+		Size = size,
+		BackgroundColor3 = Color3.fromRGB(20, 14, 14),
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+	})
+	corner(back, 6)
+	local fill = new("Frame", {
+		Parent = back,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+	})
+	corner(fill, 6)
+	local label = new("TextLabel", {
+		Parent = back,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		TextSize = 14,
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextStrokeTransparency = 0.5,
+		Text = labelText,
+	})
+	return fill, label, back
+end
+
+function Hud.create(playerGui: PlayerGui)
+	local gui = new("ScreenGui", {
+		Parent = playerGui,
+		Name = "HudTerror",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	})
+
+	-- Vinheta vermelha (raio de terror) — quatro bordas com degradê
+	local vignette = new("Frame", { Parent = gui, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 0 })
+	local edges = {}
+	for _, data in {
+		{ UDim2.fromScale(1, 0.35), UDim2.fromScale(0, 0), 90 },
+		{ UDim2.fromScale(1, 0.35), UDim2.fromScale(0, 0.65), -90 },
+		{ UDim2.fromScale(0.3, 1), UDim2.fromScale(0, 0), 0 },
+		{ UDim2.fromScale(0.3, 1), UDim2.fromScale(0.7, 0), 180 },
+	} do
+		local f = new("Frame", {
+			Parent = vignette,
+			Size = data[1],
+			Position = data[2],
+			BackgroundColor3 = Color3.fromRGB(150, 0, 0),
+			BorderSizePixel = 0,
+			BackgroundTransparency = 1,
+		})
+		new("UIGradient", {
+			Parent = f,
+			Rotation = data[3],
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		})
+		table.insert(edges, f)
+	end
+
+	-- Tela de dano / flash
+	local flash = new("Frame", {
+		Parent = gui,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(180, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 1,
+	})
+
+	-- Topo: fase + relógio + status
+	local top = new("Frame", {
+		Parent = gui,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 44),
+		Size = UDim2.fromOffset(460, 104),
+		BackgroundColor3 = Color3.fromRGB(14, 8, 8),
+		BackgroundTransparency = 0.25,
+		BorderSizePixel = 0,
+	})
+	corner(top, 10)
+	new("UIStroke", { Parent = top, Color = Color3.fromRGB(110, 20, 16), Thickness = 2 })
+	local phase = new("TextLabel", {
+		Parent = top,
+		Position = UDim2.fromOffset(0, 4),
+		Size = UDim2.new(1, 0, 0, 26),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Creepster,
+		TextSize = 26,
+		TextColor3 = Color3.fromRGB(220, 40, 30),
+		Text = "COLHEITA SOMBRIA",
+	})
+	local timer = new("TextLabel", {
+		Parent = top,
+		Position = UDim2.fromOffset(0, 28),
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		TextSize = 36,
+		TextColor3 = Color3.fromRGB(245, 235, 220),
+		Text = "",
+	})
+	local statusLabel = new("TextLabel", {
+		Parent = top,
+		Position = UDim2.fromOffset(10, 70),
+		Size = UDim2.new(1, -20, 0, 28),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		TextSize = 15,
+		TextWrapped = true,
+		TextColor3 = Color3.fromRGB(200, 190, 180),
+		Text = "",
+	})
+
+	-- Info extra embaixo do topo (voto, chance, geradores)
+	local info = new("TextLabel", {
+		Parent = gui,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 154),
+		Size = UDim2.fromOffset(460, 24),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		TextSize = 16,
+		TextColor3 = Color3.fromRGB(240, 210, 150),
+		TextStrokeTransparency = 0.4,
+		Text = "",
+	})
+
+	-- Painel inferior esquerdo: papel, vida e estamina
+	local panel = new("Frame", {
+		Parent = gui,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 20, 1, -20),
+		Size = UDim2.fromOffset(270, 96),
+		BackgroundColor3 = Color3.fromRGB(14, 8, 8),
+		BackgroundTransparency = 0.3,
+		BorderSizePixel = 0,
+	})
+	corner(panel, 10)
+	local role = new("TextLabel", {
+		Parent = panel,
+		Position = UDim2.fromOffset(12, 6),
+		Size = UDim2.new(1, -24, 0, 26),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Creepster,
+		TextSize = 24,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Color3.fromRGB(230, 220, 200),
+		Text = "NO LOBBY",
+	})
+	local hpFill, hpLabel, hpBack = bar(panel, UDim2.fromOffset(12, 38), UDim2.new(1, -24, 0, 20), Color3.fromRGB(190, 40, 40), "Vida")
+	local stFill, stLabel, stBack = bar(panel, UDim2.fromOffset(12, 64), UDim2.new(1, -24, 0, 20), Color3.fromRGB(230, 190, 70), "Estamina")
+
+	-- Painel inferior direito: habilidades
+	local abilities = new("Frame", {
+		Parent = gui,
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -20, 1, -20),
+		Size = UDim2.fromOffset(260, 110),
+		BackgroundTransparency = 1,
+	})
+	new("UIListLayout", {
+		Parent = abilities,
+		Padding = UDim.new(0, 6),
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+	})
+	local abilityRows = {}
+	for i = 1, 3 do
+		local row = new("Frame", {
+			Parent = abilities,
+			Size = UDim2.fromOffset(260, 30),
+			BackgroundColor3 = Color3.fromRGB(14, 8, 8),
+			BackgroundTransparency = 0.3,
+			BorderSizePixel = 0,
+			LayoutOrder = i,
+			Visible = false,
+		})
+		corner(row, 6)
+		local fill = new("Frame", {
+			Parent = row,
+			Size = UDim2.fromScale(0, 1),
+			BackgroundColor3 = Color3.fromRGB(120, 30, 24),
+			BackgroundTransparency = 0.3,
+			BorderSizePixel = 0,
+		})
+		corner(fill, 6)
+		local text = new("TextLabel", {
+			Parent = row,
+			Position = UDim2.fromOffset(10, 0),
+			Size = UDim2.new(1, -20, 1, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			TextSize = 15,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextColor3 = Color3.fromRGB(240, 230, 220),
+			Text = "",
+		})
+		table.insert(abilityRows, { row = row, fill = fill, text = text })
+	end
+
+	-- Avisos (toasts) no centro
+	local toasts = new("Frame", {
+		Parent = gui,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.62, 0),
+		Size = UDim2.fromOffset(520, 160),
+		BackgroundTransparency = 1,
+	})
+	new("UIListLayout", { Parent = toasts, Padding = UDim.new(0, 4), HorizontalAlignment = Enum.HorizontalAlignment.Center })
+
+	-- Resultado
+	local result = new("Frame", {
+		Parent = gui,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 1,
+		Visible = false,
+		ZIndex = 5,
+	})
+	local resultTitle = new("TextLabel", {
+		Parent = result,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.44),
+		Size = UDim2.new(0.9, 0, 0, 90),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Creepster,
+		TextScaled = true,
+		TextColor3 = Color3.fromRGB(220, 30, 24),
+		Text = "",
+		ZIndex = 6,
+	})
+	local resultSub = new("TextLabel", {
+		Parent = result,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.52),
+		Size = UDim2.new(0.8, 0, 0, 30),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		TextSize = 22,
+		TextColor3 = Color3.fromRGB(230, 220, 210),
+		Text = "",
+		ZIndex = 6,
+	})
+
+	-- Botão de assistir (para quem morreu / está no lobby durante a partida)
+	local spectate = new("TextButton", {
+		Parent = gui,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -24),
+		Size = UDim2.fromOffset(220, 40),
+		BackgroundColor3 = Color3.fromRGB(60, 14, 12),
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		TextSize = 16,
+		TextColor3 = Color3.fromRGB(240, 230, 220),
+		Text = "Assistir partida",
+		Visible = false,
+	})
+	corner(spectate, 8)
+
+	local self = {
+		gui = gui,
+		edges = edges,
+		flash = flash,
+		phase = phase,
+		timer = timer,
+		status = statusLabel,
+		info = info,
+		role = role,
+		hpFill = hpFill,
+		hpLabel = hpLabel,
+		hpBack = hpBack,
+		stFill = stFill,
+		stLabel = stLabel,
+		stBack = stBack,
+		abilityRows = abilityRows,
+		toasts = toasts,
+		result = result,
+		resultTitle = resultTitle,
+		resultSub = resultSub,
+		spectate = spectate,
+	}
+
+	function self.toast(text: string, color: Color3?)
+		local label = new("TextLabel", {
+			Parent = toasts,
+			Size = UDim2.fromOffset(520, 30),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBlack,
+			TextSize = 22,
+			TextColor3 = color or Color3.fromRGB(240, 230, 220),
+			TextStrokeTransparency = 0.3,
+			Text = text,
+		})
+		task.delay(3.2, function()
+			local tw = TweenService:Create(label, TweenInfo.new(0.6), { TextTransparency = 1, TextStrokeTransparency = 1 })
+			tw:Play()
+			tw.Completed:Wait()
+			label:Destroy()
+		end)
+		local kids = 0
+		for _, c in toasts:GetChildren() do
+			if c:IsA("TextLabel") then
+				kids += 1
+			end
+		end
+		if kids > 4 then
+			for _, c in toasts:GetChildren() do
+				if c:IsA("TextLabel") and c ~= label then
+					c:Destroy()
+					break
+				end
+			end
+		end
+	end
+
+	function self.hitFlash(color: Color3?, strength: number?)
+		flash.BackgroundColor3 = color or Color3.fromRGB(180, 0, 0)
+		flash.BackgroundTransparency = 1 - (strength or 0.5)
+		TweenService:Create(flash, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
+	end
+
+	function self.showResult(title: string, sub: string, color: Color3)
+		result.Visible = true
+		result.BackgroundTransparency = 1
+		resultTitle.Text = title
+		resultTitle.TextColor3 = color
+		resultTitle.TextTransparency = 1
+		resultSub.Text = sub
+		resultSub.TextTransparency = 1
+		TweenService:Create(result, TweenInfo.new(0.8), { BackgroundTransparency = 0.35 }):Play()
+		TweenService:Create(resultTitle, TweenInfo.new(0.8), { TextTransparency = 0 }):Play()
+		TweenService:Create(resultSub, TweenInfo.new(1.2), { TextTransparency = 0 }):Play()
+		task.delay(6, function()
+			local tw = TweenService:Create(result, TweenInfo.new(0.8), { BackgroundTransparency = 1 })
+			TweenService:Create(resultTitle, TweenInfo.new(0.8), { TextTransparency = 1 }):Play()
+			TweenService:Create(resultSub, TweenInfo.new(0.8), { TextTransparency = 1 }):Play()
+			tw:Play()
+			tw.Completed:Wait()
+			result.Visible = false
+		end)
+	end
+
+	function self.setTerror(amount: number)
+		for _, e in edges do
+			e.BackgroundTransparency = 1 - math.clamp(amount, 0, 1) * 0.75
+		end
+	end
+
+	return self
+end
+
+return Hud
+]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="LocalScript" referent="RBX21">
+					<Properties>
+						<string name="Name">Main</string>
+						<ProtectedString name="Source"><![CDATA[-- Colheita Sombria — script do cliente.
+-- Controles, interface, raio de terror, luzes piscando e o moinho girando.
+
+local CollectionService = game:GetService("CollectionService")
+local ContextActionService = game:GetService("ContextActionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
+
+local player = Players.LocalPlayer
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Remotes = require(Shared:WaitForChild("Remotes"))
+local Hud = require(script.Parent:WaitForChild("Hud"))
+
+local Action = Remotes.get("Action")
+local hud = Hud.create(player:WaitForChild("PlayerGui") :: PlayerGui)
+
+local function role(): string
+	return player:GetAttribute("Role") or "Lobby"
+end
+
+---------------------------------------------------------------------------------
+-- Controles (mudam conforme o papel). No celular aparecem botões na tela.
+---------------------------------------------------------------------------------
+local BOUND = { "Correr", "Lanterna", "Atacar", "Uivo", "Investida" }
+
+local function onSprint(_, state: Enum.UserInputState)
+	if state == Enum.UserInputState.Begin then
+		Action:FireServer("Sprint", true)
+	elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+		Action:FireServer("Sprint", false)
+	end
+	return Enum.ContextActionResult.Pass
+end
+
+local function simple(actionName: string)
+	return function(_, state: Enum.UserInputState)
+		if state == Enum.UserInputState.Begin then
+			Action:FireServer(actionName)
+		end
+		return Enum.ContextActionResult.Pass
+	end
+end
+
+local function rebind()
+	for _, name in BOUND do
+		ContextActionService:UnbindAction(name)
+	end
+	Action:FireServer("Sprint", false)
+	local r = role()
+	if r == "Survivor" then
+		ContextActionService:BindAction("Correr", onSprint, true, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonL3)
+		ContextActionService:SetTitle("Correr", "Correr")
+		ContextActionService:SetPosition("Correr", UDim2.new(1, -170, 1, -150))
+		ContextActionService:BindAction("Lanterna", simple("Ability1"), true, Enum.KeyCode.Q, Enum.KeyCode.ButtonX)
+		ContextActionService:SetTitle("Lanterna", "Luz")
+		ContextActionService:SetPosition("Lanterna", UDim2.new(1, -230, 1, -90))
+	elseif r == "Killer" then
+		ContextActionService:BindAction("Atacar", simple("Attack"), true, Enum.UserInputType.MouseButton1, Enum.KeyCode.F, Enum.KeyCode.ButtonR2)
+		ContextActionService:SetTitle("Atacar", "Golpe")
+		ContextActionService:SetPosition("Atacar", UDim2.new(1, -170, 1, -150))
+		ContextActionService:BindAction("Uivo", simple("Ability1"), true, Enum.KeyCode.Q, Enum.KeyCode.ButtonX)
+		ContextActionService:SetTitle("Uivo", "Uivo")
+		ContextActionService:SetPosition("Uivo", UDim2.new(1, -230, 1, -90))
+		ContextActionService:BindAction("Investida", simple("Ability2"), true, Enum.KeyCode.E, Enum.KeyCode.ButtonY)
+		ContextActionService:SetTitle("Investida", "Avanço")
+		ContextActionService:SetPosition("Investida", UDim2.new(1, -110, 1, -210))
+	end
+end
+
+player:GetAttributeChangedSignal("Role"):Connect(rebind)
+rebind()
+
+---------------------------------------------------------------------------------
+-- Mensagens do servidor
+---------------------------------------------------------------------------------
+Remotes.get("Notify").OnClientEvent:Connect(function(text: string, color: Color3?)
+	hud.toast(text, color)
+end)
+
+Remotes.get("Result").OnClientEvent:Connect(function(winner: string, title: string, sub: string)
+	local color = if winner == "Killer" then Color3.fromRGB(220, 30, 24) else Color3.fromRGB(240, 220, 140)
+	hud.showResult(title, sub, color)
+end)
+
+-- Uivo do assassino: destaca os sobreviventes através das paredes
+Remotes.get("Reveal").OnClientEvent:Connect(function(targets: { Model }, duration: number)
+	hud.toast("Você sente o cheiro do medo...", Color3.fromRGB(255, 80, 60))
+	for _, model in targets do
+		if typeof(model) == "Instance" and model:IsA("Model") then
+			local h = Instance.new("Highlight")
+			h.FillColor = Color3.fromRGB(255, 40, 30)
+			h.OutlineColor = Color3.fromRGB(255, 200, 180)
+			h.FillTransparency = 0.45
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.Parent = model
+			task.delay(duration, function()
+				h:Destroy()
+			end)
+		end
+	end
+end)
+
+---------------------------------------------------------------------------------
+-- Personagem: flash de dano e de atordoamento
+---------------------------------------------------------------------------------
+local function onCharacter(character: Model)
+	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
+	local last = humanoid.Health
+	humanoid.HealthChanged:Connect(function(hp)
+		if hp < last - 1 then
+			hud.hitFlash(Color3.fromRGB(180, 0, 0), 0.55)
+		end
+		last = hp
+	end)
+	character:GetAttributeChangedSignal("Stunned"):Connect(function()
+		if character:GetAttribute("Stunned") then
+			hud.hitFlash(Color3.fromRGB(255, 255, 240), 0.9)
+		end
+	end)
+	local cam = workspace.CurrentCamera
+	if cam then
+		cam.CameraSubject = humanoid
+	end
+end
+player.CharacterAdded:Connect(onCharacter)
+if player.Character then
+	task.spawn(onCharacter, player.Character)
+end
+
+---------------------------------------------------------------------------------
+-- Assistir a partida (para quem está no lobby)
+---------------------------------------------------------------------------------
+local spectating: Player? = nil
+local function spectateTargets(): { Player }
+	local out = {}
+	for _, p in Players:GetPlayers() do
+		local r = p:GetAttribute("Role")
+		if p ~= player and (r == "Survivor" or r == "Killer") and p.Character then
+			table.insert(out, p)
+		end
+	end
+	return out
+end
+
+local function stopSpectating()
+	spectating = nil
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum and workspace.CurrentCamera then
+		workspace.CurrentCamera.CameraSubject = hum
+	end
+end
+
+hud.spectate.MouseButton1Click:Connect(function()
+	local list = spectateTargets()
+	if #list == 0 then
+		stopSpectating()
+		return
+	end
+	local idx = table.find(list, spectating :: Player) or 0
+	idx += 1
+	if idx > #list then
+		stopSpectating()
+		return
+	end
+	spectating = list[idx]
+	local hum = list[idx].Character and list[idx].Character:FindFirstChildOfClass("Humanoid")
+	if hum and workspace.CurrentCamera then
+		workspace.CurrentCamera.CameraSubject = hum
+	end
+end)
+
+---------------------------------------------------------------------------------
+-- Geradores: só sobreviventes veem o "Consertar"
+---------------------------------------------------------------------------------
+task.spawn(function()
+	while true do
+		local canRepair = role() == "Survivor"
+		for _, prompt in CollectionService:GetTagged("GeneratorPrompt") do
+			if prompt:IsA("ProximityPrompt") then
+				local want = canRepair and not prompt:GetAttribute("Done")
+				if prompt.Enabled ~= want then
+					prompt.Enabled = want
+				end
+			end
+		end
+		task.wait(0.3)
+	end
+end)
+
+---------------------------------------------------------------------------------
+-- Luzes piscando (tag "Flicker") e pás do moinho girando (tag "Spin")
+---------------------------------------------------------------------------------
+local flickering: { [Instance]: boolean } = {}
+
+local function setLit(part: BasePart, on: boolean)
+	for _, l in part:GetChildren() do
+		if l:IsA("Light") then
+			l.Enabled = on
+		end
+	end
+	if part.Material == Enum.Material.Neon or part:GetAttribute("WasNeon") then
+		if not on then
+			part:SetAttribute("WasNeon", true)
+			part.Material = Enum.Material.SmoothPlastic
+		else
+			part.Material = Enum.Material.Neon
+		end
+	end
+end
+
+local function flicker(part: BasePart)
+	if flickering[part] then
+		return
+	end
+	flickering[part] = true
+	task.spawn(function()
+		for _ = 1, math.random(2, 5) do
+			setLit(part, false)
+			task.wait(math.random() * 0.12 + 0.03)
+			setLit(part, true)
+			task.wait(math.random() * 0.15 + 0.03)
+		end
+		if math.random() < 0.15 then
+			setLit(part, false)
+			task.wait(math.random() * 1.5 + 0.5)
+			setLit(part, true)
+		end
+		flickering[part] = nil
+	end)
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.1)
+		for _, part in CollectionService:GetTagged("Flicker") do
+			if part:IsA("BasePart") and math.random() < 0.012 then
+				flicker(part)
+			end
+		end
+	end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+	for _, model in CollectionService:GetTagged("Spin") do
+		if model:IsA("Model") then
+			local speed = model:GetAttribute("Speed") or 0.5
+			model:PivotTo(model:GetPivot() * CFrame.Angles(0, 0, speed * dt))
+		end
+	end
+end)
+
+---------------------------------------------------------------------------------
+-- Sons opcionais (configure os IDs em Shared/Config)
+---------------------------------------------------------------------------------
+local function loopSound(id: string, volume: number): Sound?
+	if id == "" then
+		return nil
+	end
+	local s = Instance.new("Sound")
+	s.SoundId = id
+	s.Looped = true
+	s.Volume = 0
+	s.Parent = SoundService
+	s:Play()
+	s:SetAttribute("Target", volume)
+	return s
+end
+local lobbyAmb = loopSound(Config.Sounds.LobbyAmbience, 0.4)
+local roundAmb = loopSound(Config.Sounds.RoundAmbience, 0.4)
+local chase = loopSound(Config.Sounds.Chase, 0.6)
+
+local function fade(s: Sound?, target: number, dt: number)
+	if s then
+		s.Volume += (target - s.Volume) * math.min(1, dt * 2)
+	end
+end
+
+---------------------------------------------------------------------------------
+-- Atualização da interface
+---------------------------------------------------------------------------------
+local PHASE_TEXT = {
+	Esperando = "AGUARDANDO",
+	Votacao = "VOTAÇÃO DE MAPA",
+	Preparando = "PREPARANDO",
+	Partida = "PARTIDA",
+	Fim = "FIM DA PARTIDA",
+}
+
+local function fmtTime(s: number): string
+	s = math.max(0, math.floor(s))
+	return ("%d:%02d"):format(s // 60, s % 60)
+end
+
+local function killerCharacter(): Model?
+	for _, m in CollectionService:GetTagged("KillerCharacter") do
+		if m:IsA("Model") and m.Parent then
+			return m
+		end
+	end
+	return nil
+end
+
+local function cooldownText(name: string, label: string, key: string, row)
+	local cd = player:GetAttribute("CD_" .. name)
+	local max = player:GetAttribute("CDMAX_" .. name) or 1
+	local remaining = if cd then cd - workspace:GetServerTimeNow() else 0
+	row.row.Visible = true
+	if remaining > 0 then
+		row.text.Text = ("[%s] %s — %.1fs"):format(key, label, remaining)
+		row.fill.Size = UDim2.fromScale(math.clamp(remaining / max, 0, 1), 1)
+		row.text.TextColor3 = Color3.fromRGB(170, 160, 150)
+	else
+		row.text.Text = ("[%s] %s — pronta"):format(key, label)
+		row.fill.Size = UDim2.fromScale(0, 1)
+		row.text.TextColor3 = Color3.fromRGB(250, 240, 220)
+	end
+end
+
+local lastRole = ""
+RunService.RenderStepped:Connect(function(dt)
+	local phase = ReplicatedStorage:GetAttribute("Phase") or "Esperando"
+	local timeLeft = ReplicatedStorage:GetAttribute("TimeLeft") or 0
+	local r = role()
+
+	local title = PHASE_TEXT[phase] or phase
+	local mapName = ReplicatedStorage:GetAttribute("MapName") or ""
+	if (phase == "Partida" or phase == "Preparando") and mapName ~= "" then
+		title ..= " — " .. string.upper(mapName)
+	end
+	hud.phase.Text = title
+	hud.timer.Text = if timeLeft > 0 then fmtTime(timeLeft) else ""
+	hud.status.Text = ReplicatedStorage:GetAttribute("Status") or ""
+	hud.timer.TextColor3 = if phase == "Votacao" and timeLeft <= 5 then Color3.fromRGB(255, 80, 60) else Color3.fromRGB(245, 235, 220)
+
+	-- linha de informação
+	if phase == "Votacao" or phase == "Esperando" then
+		local vote = player:GetAttribute("Vote") or ""
+		local myChance = player:GetAttribute("Chance") or 1
+		local total = 0
+		for _, p in Players:GetPlayers() do
+			total += p:GetAttribute("Chance") or 1
+		end
+		local pct = if total > 0 then math.floor(myChance / total * 100 + 0.5) else 0
+		local voteText = if vote ~= "" then "Seu voto: " .. vote else "Pise num quadrado para votar"
+		hud.info.Text = ("%s   •   Chance de ser o Espantalho: %d%%"):format(voteText, pct)
+	elseif phase == "Partida" then
+		hud.info.Text = ("Geradores: %d/%d   •   Espantalho: %s"):format(
+			ReplicatedStorage:GetAttribute("GensDone") or 0,
+			ReplicatedStorage:GetAttribute("GensTotal") or 0,
+			ReplicatedStorage:GetAttribute("Killer") or "?"
+		)
+	else
+		hud.info.Text = ""
+	end
+
+	-- papel, vida, estamina
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if r ~= lastRole then
+		lastRole = r
+		if r ~= "Lobby" then
+			stopSpectating()
+		end
+	end
+	if r == "Survivor" then
+		hud.role.Text = "SOBREVIVENTE"
+		hud.role.TextColor3 = Color3.fromRGB(230, 220, 200)
+		hud.hpBack.Visible = true
+		hud.stBack.Visible = true
+		if hum then
+			hud.hpFill.Size = UDim2.fromScale(math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1), 1)
+			hud.hpLabel.Text = ("Vida %d"):format(math.max(0, math.floor(hum.Health)))
+		end
+		local st = player:GetAttribute("Stamina") or Config.Survivor.MaxStamina
+		hud.stFill.Size = UDim2.fromScale(math.clamp(st / Config.Survivor.MaxStamina, 0, 1), 1)
+		hud.stLabel.Text = ("Estamina %d"):format(st)
+		cooldownText("Lantern", "Lanterna", "Q", hud.abilityRows[1])
+		hud.abilityRows[2].row.Visible = true
+		hud.abilityRows[2].text.Text = "[Shift] Correr   [E] Consertar gerador"
+		hud.abilityRows[2].fill.Size = UDim2.fromScale(0, 1)
+		hud.abilityRows[3].row.Visible = false
+	elseif r == "Killer" then
+		hud.role.Text = "O ESPANTALHO"
+		hud.role.TextColor3 = Color3.fromRGB(230, 40, 30)
+		hud.hpBack.Visible = false
+		hud.stBack.Visible = false
+		cooldownText("Attack", "Golpe", "Clique/F", hud.abilityRows[1])
+		cooldownText("Howl", "Uivo (revela todos)", "Q", hud.abilityRows[2])
+		cooldownText("Dash", "Investida", "E", hud.abilityRows[3])
+	else
+		hud.role.Text = if phase == "Partida" then "ESPECTADOR" else "NO LOBBY"
+		hud.role.TextColor3 = Color3.fromRGB(200, 190, 180)
+		hud.hpBack.Visible = false
+		hud.stBack.Visible = false
+		for _, row in hud.abilityRows do
+			row.row.Visible = false
+		end
+	end
+
+	-- assistir
+	hud.spectate.Visible = r == "Lobby" and phase == "Partida"
+	if spectating then
+		if not spectating.Parent or (spectating:GetAttribute("Role") ~= "Survivor" and spectating:GetAttribute("Role") ~= "Killer") or phase ~= "Partida" then
+			stopSpectating()
+		else
+			hud.spectate.Text = "Assistindo: " .. spectating.DisplayName
+		end
+	else
+		hud.spectate.Text = "Assistir partida"
+	end
+
+	-- raio de terror
+	local terror = 0
+	if r == "Survivor" and char then
+		local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local killer = killerCharacter()
+		local kroot = killer and killer:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if root and kroot then
+			local d = (kroot.Position - root.Position).Magnitude
+			if d < Config.TERROR_RADIUS then
+				local closeness = 1 - d / Config.TERROR_RADIUS
+				local beat = 0.55 + 0.45 * math.abs(math.sin(os.clock() * (3 + closeness * 6)))
+				terror = closeness * beat
+			end
+		end
+	end
+	hud.setTerror(terror)
+
+	fade(lobbyAmb, if phase ~= "Partida" or r == "Lobby" then 0.4 else 0, dt)
+	fade(roundAmb, if phase == "Partida" and r ~= "Lobby" then 0.4 else 0, dt)
+	fade(chase, if terror > 0.25 then 0.6 else 0, dt)
+end)
+]]></ProtectedString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+	</Item>
+</roblox>
