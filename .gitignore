@@ -6,3 +6,10 @@ tools/cache/
 server/data/
 test-results/
 .vite/
+
+# V8 engine video
+v8-engine/cache/
+v8-engine/render/
+v8-engine/remotion/node_modules/
+v8-engine/remotion/out/
+v8-engine/remotion/public/
