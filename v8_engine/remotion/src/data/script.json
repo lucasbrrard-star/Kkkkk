@@ -1,0 +1,28 @@
+{
+ "narration": [
+  {
+   "t": 1.0,
+   "text": "Por trás do ronco de um V8, existe uma máquina de precisão."
+  },
+  {
+   "t": 5.25,
+   "text": "Oito pistões trabalham em conjunto, transformando força em rotação."
+  },
+  {
+   "t": 10.15,
+   "text": "Primeiro, o cilindro recebe ar e combustível. Depois, comprime essa mistura."
+  },
+  {
+   "t": 15.2,
+   "text": "A vela inicia a combustão, e os gases empurram o pistão com força."
+  },
+  {
+   "t": 20.1,
+   "text": "Os gases saem pelo escape, enquanto os outros cilindros mantêm o motor girando."
+  },
+  {
+   "t": 25.2,
+   "text": "É essa sequência de movimentos que dá vida a um motor V8."
+  }
+ ]
+}
