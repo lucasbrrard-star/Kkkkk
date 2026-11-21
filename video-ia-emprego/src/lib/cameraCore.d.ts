@@ -1,0 +1,13 @@
+export const FPS: number;
+export const FOCAL: number;
+export const Z_GLASS: number;
+export const T_GLASS: number;
+export const T_PORTAL: number;
+export const Z_PORTAL: number;
+export const MONITOR_Y: number;
+export const camZ: (t: number) => number;
+export const camV: (t: number) => number;
+export const camXY: (t: number) => {x: number; y: number};
+export const camRoll: (t: number) => number;
+export const project: (X: number, Y: number, Z: number, t: number) => {sx: number; sy: number; k: number; d: number};
+export const bumps: {c: number; wl: number; wr: number; area: number}[];

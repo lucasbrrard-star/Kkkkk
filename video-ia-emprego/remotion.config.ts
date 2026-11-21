@@ -1,0 +1,10 @@
+import {Config} from '@remotion/cli/config';
+
+Config.setBrowserExecutable('/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell');
+Config.setChromiumOpenGlRenderer('swangle');
+Config.setVideoImageFormat('jpeg');
+Config.setJpegQuality(95);
+Config.setConcurrency(4);
+Config.setPixelFormat('yuv420p');
+Config.setCodec('h264');
+Config.setCrf(16);

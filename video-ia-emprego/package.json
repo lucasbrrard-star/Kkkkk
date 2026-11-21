@@ -1,0 +1,26 @@
+{
+  "name": "video-ia-emprego",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Motion graphics TikTok: E se a IA substituisse seu emprego amanha?",
+  "scripts": {
+    "studio": "remotion studio",
+    "render:preview": "remotion render src/index.ts Preview out/preview_v1_silent.mp4"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/inter-tight": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@remotion/bundler": "^4.0.545",
+    "@remotion/cli": "^4.0.545",
+    "@remotion/motion-blur": "^4.0.545",
+    "@remotion/renderer": "^4.0.545",
+    "@types/react": "^19.3.0",
+    "@types/three": "^0.180.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "^4.0.545",
+    "three": "^0.180.0",
+    "typescript": "^7.0.2"
+  }
+}
